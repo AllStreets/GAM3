@@ -52,3 +52,13 @@ test('fleet panel selects a satellite and plans a burn', async ({ page }) => {
   // Plan resets after execution
   await expect(page.getByText(/cost 0\.0 m\/s/)).toBeVisible()
 })
+
+test('events panel shows live world events and focuses one', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByText('EVENTS')).toBeVisible()
+  // Live feeds populate within the polling fetch; allow generous time.
+  const firstEvent = page.locator('aside').filter({ hasText: 'EVENTS' }).locator('li button').first()
+  await expect(firstEvent).toBeVisible({ timeout: 20_000 })
+  await firstEvent.click()
+  await expect(firstEvent).toHaveClass(/border-\[var\(--accent\)\]/)
+})
