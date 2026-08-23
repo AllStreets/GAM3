@@ -123,10 +123,11 @@ export class GlobeEngine {
   }
 
   private updateSun() {
-    if (!this.earthMaterial) return
     const { lat, lon } = subsolarPoint(new Date())
     const dir = latLonToVector3(lat, lon, 1).normalize()
-    ;(this.earthMaterial.uniforms.sunDirection.value as THREE.Vector3).copy(dir)
+    if (this.earthMaterial) {
+      ;(this.earthMaterial.uniforms.sunDirection.value as THREE.Vector3).copy(dir)
+    }
     if (this.atmosphereMaterial) {
       ;(this.atmosphereMaterial.uniforms.sunDirection.value as THREE.Vector3).copy(dir)
     }
