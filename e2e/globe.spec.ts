@@ -46,11 +46,17 @@ test('fleet panel selects a satellite and plans a burn', async ({ page }) => {
   for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowRight')
   await expect(page.getByText(/cost 2[0-9]\.[0-9] m\/s/)).toBeVisible()
 
-  const execute = page.getByRole('button', { name: 'EXECUTE' })
-  await expect(execute).toBeEnabled()
-  await execute.click()
-  // Plan resets after execution
-  await expect(page.getByText(/cost 0\.0 m\/s/)).toBeVisible()
+  const ignite = page.getByRole('button', { name: 'IGNITE' })
+  await expect(ignite).toBeEnabled()
+  await ignite.click()
+  await expect(page.getByText(/BURN IN PROGRESS/)).toBeVisible()
+  // Fly the burn: hold SPACE for just over the 2s minimum duration.
+  await page.keyboard.down('Space')
+  await page.waitForTimeout(2400)
+  await page.keyboard.up('Space')
+  await expect(page.getByText(/BURN IN PROGRESS/)).not.toBeVisible({ timeout: 5_000 })
+  // Fuel was spent (was 450/450).
+  await expect(page.getByText(/Δv 4[0-3][0-9]\/450 m\/s/)).toBeVisible()
 })
 
 test('events panel shows live world events and focuses one', async ({ page }) => {

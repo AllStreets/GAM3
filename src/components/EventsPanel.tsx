@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useWorldStore, startEventPolling } from '@/state/worldStore'
 import type { EventKind } from '@/lib/worldEvents'
+import { audio } from '@/audio/AudioEngine'
 
 const GLYPH: Record<EventKind, { char: string; cls: string }> = {
   quake: { char: '◉', cls: 'text-[#ff5c49]' },
@@ -58,7 +59,7 @@ export default function EventsPanel() {
               return (
                 <li key={ev.id}>
                   <button
-                    onClick={() => focusEvent(focused ? null : ev.id)}
+                    onClick={() => { audio.uiTick(); focusEvent(focused ? null : ev.id) }}
                     className={`w-full rounded border px-2 py-1.5 text-left transition ${
                       focused ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-transparent hover:border-white/20'
                     }`}

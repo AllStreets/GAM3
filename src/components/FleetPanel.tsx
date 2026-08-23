@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useGameStore, burnCost, type Satellite } from '@/state/gameStore'
 import { propagate, ER_KM } from '@/lib/orbits'
 import { simNow } from '@/lib/simTime'
+import { audio } from '@/audio/AudioEngine'
 
 function telemetry(sat: Satellite) {
   const { position, velocity } = propagate(sat.elements, simNow())
@@ -34,7 +35,7 @@ export default function FleetPanel() {
   const select = useGameStore((s) => s.select)
   const setBurnPlan = useGameStore((s) => s.setBurnPlan)
   const resetBurnPlan = useGameStore((s) => s.resetBurnPlan)
-  const executeBurn = useGameStore((s) => s.executeBurn)
+  const beginBurn = useGameStore((s) => s.beginBurn)
 
   // Re-render telemetry at 4 Hz; mounted gates hydration-sensitive output
   const [mounted, setMounted] = useState(false)
@@ -47,7 +48,7 @@ export default function FleetPanel() {
 
   const selected = satellites.find((s) => s.id === selectedId) ?? null
   const cost = burnCost(burnPlan)
-  const canExecute = !!selected && cost > 0 && cost <= (selected?.fuel ?? 0)
+  const canExecute = !!selected && cost > 0 && cost * 1.25 <= (selected?.fuel ?? 0)
 
   return (
     <aside className="pointer-events-auto fixed right-6 top-16 z-20 w-72 space-y-3 font-mono text-xs text-[var(--text)]">
@@ -60,7 +61,7 @@ export default function FleetPanel() {
             return (
               <li key={sat.id}>
                 <button
-                  onClick={() => select(isSel ? null : sat.id)}
+                  onClick={() => { audio.chirp(); select(isSel ? null : sat.id) }}
                   className={`w-full rounded border px-2 py-1.5 text-left transition ${
                     isSel ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-white/10 hover:border-white/30'
                   }`}
@@ -98,17 +99,17 @@ export default function FleetPanel() {
             <span className="tabular-nums opacity-80">cost {cost.toFixed(1)} m/s</span>
             <span className="flex gap-2">
               <button
-                onClick={resetBurnPlan}
+                onClick={() => { audio.uiTick(); resetBurnPlan() }}
                 className="rounded border border-white/15 px-2 py-1 hover:border-white/40"
               >
                 RESET
               </button>
               <button
-                onClick={() => executeBurn(simNow())}
+                onClick={() => { if (beginBurn()) audio.alert() }}
                 disabled={!canExecute}
                 className="rounded border border-[#ffb86b] px-2 py-1 text-[#ffb86b] transition enabled:hover:bg-[#ffb86b]/15 disabled:opacity-30"
               >
-                EXECUTE
+                IGNITE
               </button>
             </span>
           </div>
