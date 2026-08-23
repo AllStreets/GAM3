@@ -44,3 +44,27 @@ export function subsolarPoint(date: Date): { lat: number; lon: number } {
 
   return { lat, lon }
 }
+
+/** Earth radius in km (surface-distance conversions). */
+export const ER_KM = 6371
+
+/** Inverse of latLonToVector3. lon returned in (-180, 180]. */
+export function vector3ToLatLon(v: Vector3): { lat: number; lon: number } {
+  const n = v.clone().normalize()
+  const lat = 90 - (Math.acos(Math.min(1, Math.max(-1, n.y))) * 180) / Math.PI
+  let lon = 90 - (Math.atan2(n.z, n.x) * 180) / Math.PI
+  if (lon > 180) lon -= 360
+  if (lon <= -180) lon += 360
+  return { lat, lon }
+}
+
+/** Haversine great-circle surface distance in km. */
+export function greatCircleKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = Math.PI / 180
+  const dLat = (lat2 - lat1) * toRad
+  const dLon = (lon2 - lon1) * toRad
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2
+  return 2 * ER_KM * Math.asin(Math.min(1, Math.sqrt(a)))
+}
