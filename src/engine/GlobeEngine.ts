@@ -8,8 +8,10 @@ import { createEarthMaterial } from '@/engine/earthMaterial'
 import { createAtmosphereMaterial } from '@/engine/atmosphereMaterial'
 import { EARTH_RADIUS, latLonToVector3, subsolarPoint } from '@/lib/geo'
 import { SatelliteLayer } from '@/engine/SatelliteLayer'
+import { EventLayer } from '@/engine/EventLayer'
 import { simNow } from '@/lib/simTime'
 import { useGameStore } from '@/state/gameStore'
+import { useWorldStore } from '@/state/worldStore'
 
 export class GlobeEngine {
   private renderer: THREE.WebGLRenderer
@@ -27,6 +29,9 @@ export class GlobeEngine {
   private static readonly INTRO_SECONDS = 3.5
   protected earth: THREE.Mesh
   private satLayer: SatelliteLayer
+  private eventLayer: EventLayer
+  private worldUnsub?: () => void
+  private flight: { from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
   private pointerDown: { x: number; y: number } | null = null
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -97,6 +102,16 @@ export class GlobeEngine {
 
     this.satLayer = new SatelliteLayer()
     this.scene.add(this.satLayer.group)
+
+    this.eventLayer = new EventLayer()
+    this.scene.add(this.eventLayer.group)
+
+    this.worldUnsub = useWorldStore.subscribe((state, prev) => {
+      if (state.focusedId && state.focusedId !== prev.focusedId) {
+        const ev = state.events.find((e) => e.id === state.focusedId)
+        if (ev) this.flyTo(ev.lat, ev.lon)
+      }
+    })
 
     canvas.addEventListener('pointerdown', this.onPointerDown)
     canvas.addEventListener('pointerup', this.onPointerUp)
@@ -180,6 +195,16 @@ export class GlobeEngine {
     }
   }
 
+  /** Ease the camera so it looks down on (lat, lon), preserving current distance. */
+  private flyTo(lat: number, lon: number) {
+    const dist = this.camera.position.length()
+    this.flight = {
+      from: this.camera.position.clone(),
+      to: latLonToVector3(lat, lon, 1).normalize().multiplyScalar(dist),
+      start: -1, // stamped with elapsed time on the next update tick
+    }
+  }
+
   /** Per-frame hook — extended by later tasks. */
   protected update(elapsedSeconds: number) {
     if (this.introStart === null) this.introStart = elapsedSeconds
@@ -198,9 +223,24 @@ export class GlobeEngine {
     } else {
       this.controlsRef.enabled = true
     }
+    if (this.flight) {
+      if (this.flight.start < 0) this.flight.start = elapsedSeconds
+      const t = (elapsedSeconds - this.flight.start) / 1.2
+      if (t >= 1) {
+        this.camera.position.copy(this.flight.to)
+        this.flight = null
+        this.controls.enabled = true
+      } else {
+        const ease = 1 - Math.pow(1 - t, 3)
+        this.camera.position.lerpVectors(this.flight.from, this.flight.to, ease)
+        this.controls.enabled = false
+      }
+      this.camera.lookAt(0, 0, 0)
+    }
     this.updateSun()
     if (this.clouds) this.clouds.rotation.y = elapsedSeconds * 0.004
     this.satLayer.update(simNow())
+    this.eventLayer.update(elapsedSeconds)
   }
 
   start() {
@@ -240,6 +280,8 @@ export class GlobeEngine {
     this.resizeObserver.disconnect()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
+    this.worldUnsub?.()
+    this.eventLayer.dispose()
     this.satLayer.dispose()
     this.controls.dispose()
     this.composer?.dispose()
