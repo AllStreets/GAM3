@@ -68,3 +68,9 @@ test('events panel shows live world events and focuses one', async ({ page }) =>
   await firstEvent.click()
   await expect(firstEvent).toHaveClass(/border-\[var\(--accent\)\]/)
 })
+
+test('situation briefing arrives', async ({ page }) => {
+  await page.goto('/')
+  // Briefing requires events first, then a server round trip (AI or fallback).
+  await expect(page.getByText('SITUATION BRIEFING')).toBeVisible({ timeout: 45_000 })
+})

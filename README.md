@@ -6,7 +6,7 @@ A browser game about running a private orbital agency over a living Earth —
 real orbital mechanics, real live world events, and an AI-woven world that
 grows differently for every player.
 
-**Status:** Plan 5 (procedural 3D satellites + event icon sprites) complete.
+**Status:** Plan 6 (AI layer v1 — playstyle profile + Claude situation briefings with real-event missions) complete.
 
 ## Stack
 
@@ -19,6 +19,10 @@ Marketplace, from Plan 3) · Anthropic API (from Plan 5)
     pnpm dev        # http://localhost:3100
     pnpm test       # unit tests (orbital/geo math)
     pnpm e2e        # Playwright smoke test
+
+## Environment
+
+- `ANTHROPIC_API_KEY` — server-side only, enables AI briefings (omit for deterministic fallback).
 
 ## Documents
 
