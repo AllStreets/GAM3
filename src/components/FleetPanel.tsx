@@ -5,6 +5,8 @@ import { useGameStore, burnCost, type Satellite } from '@/state/gameStore'
 import { propagate, ER_KM } from '@/lib/orbits'
 import { simNow } from '@/lib/simTime'
 import { audio } from '@/audio/AudioEngine'
+import { SATELLITE_PRICE, refuelPrice } from '@/lib/economy'
+import { useAgencyStore } from '@/state/agencyStore'
 
 function telemetry(sat: Satellite) {
   const { position, velocity } = propagate(sat.elements, simNow())
@@ -19,7 +21,7 @@ function DvField({ label, value, onChange }: { label: string; value: number; onC
     <label className="flex items-center justify-between gap-2 text-[11px]">
       <span className="w-20 opacity-70">{label}</span>
       <input
-        type="range" min={-120} max={120} step={1} value={value}
+        type="range" min={-400} max={400} step={1} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full accent-[var(--accent)]"
       />
@@ -36,6 +38,9 @@ export default function FleetPanel() {
   const setBurnPlan = useGameStore((s) => s.setBurnPlan)
   const resetBurnPlan = useGameStore((s) => s.resetBurnPlan)
   const beginBurn = useGameStore((s) => s.beginBurn)
+  const refuelSatellite = useGameStore((s) => s.refuelSatellite)
+  const buySatellite = useGameStore((s) => s.buySatellite)
+  const funding = useAgencyStore((s) => s.funding)
 
   // Re-render telemetry at 4 Hz; mounted gates hydration-sensitive output
   const [mounted, setMounted] = useState(false)
@@ -115,6 +120,25 @@ export default function FleetPanel() {
           </div>
         </section>
       )}
+
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+        {selected && (
+          <button
+            onClick={() => { if (refuelSatellite(selected.id)) audio.uiTick() }}
+            disabled={selected.fuel >= selected.fuelCapacity || funding < refuelPrice(selected.fuelCapacity - selected.fuel)}
+            className="rounded border border-white/15 px-2 py-1 text-[11px] transition enabled:hover:border-white/40 disabled:opacity-30"
+          >
+            REFUEL §{refuelPrice((selected?.fuelCapacity ?? 0) - (selected?.fuel ?? 0))}
+          </button>
+        )}
+        <button
+          onClick={() => { if (buySatellite()) audio.chirp() }}
+          disabled={funding < SATELLITE_PRICE}
+          className="ml-auto rounded border border-[var(--accent)]/40 px-2 py-1 text-[11px] text-[var(--accent)] transition enabled:hover:bg-[var(--accent)]/10 disabled:opacity-30"
+        >
+          BUY SATELLITE §{SATELLITE_PRICE}
+        </button>
+      </div>
     </aside>
   )
 }

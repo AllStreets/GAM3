@@ -6,6 +6,7 @@ import EventsPanel from '@/components/EventsPanel'
 import BurnOverlay from '@/components/BurnOverlay'
 import BriefingPanel from '@/components/BriefingPanel'
 import FoundingScreen from '@/components/FoundingScreen'
+import AgencyBar from '@/components/AgencyBar'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -35,6 +36,7 @@ export default function Hud() {
       <EventsPanel />
       <BurnOverlay />
       <BriefingPanel />
+      <AgencyBar />
       <FoundingScreen />
     </div>
   )
