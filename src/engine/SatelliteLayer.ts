@@ -13,6 +13,7 @@ export class SatelliteLayer {
   private hits = new Map<string, THREE.Mesh>()
   private ribbons = new Map<string, THREE.LineLoop>()
   private ghost: THREE.LineLoop
+  private lastGhostRebuild = 0
   private unsubscribe: () => void
 
   constructor() {
@@ -104,6 +105,12 @@ export class SatelliteLayer {
       const p = sceneFromEci(propagate(sat.elements, simTime).position)
       this.markers.get(sat.id)?.position.copy(p)
       this.hits.get(sat.id)?.position.copy(p)
+    }
+    // Keep ghost orbit current as sim time advances (~1.3°/wall-second at 20×).
+    // Throttled to 4 Hz (every 5 sim-seconds = 0.25 wall-seconds at 20×).
+    if (this.ghost.visible && simTime - this.lastGhostRebuild > 5) {
+      this.lastGhostRebuild = simTime
+      this.rebuildGhost()
     }
   }
 
