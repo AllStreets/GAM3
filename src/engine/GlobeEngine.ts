@@ -78,6 +78,7 @@ export class GlobeEngine {
   protected update(_elapsedSeconds: number) {}
 
   start() {
+    if (this.frameHandle !== 0) return
     const clock = new THREE.Clock()
     const tick = () => {
       this.frameHandle = requestAnimationFrame(tick)
