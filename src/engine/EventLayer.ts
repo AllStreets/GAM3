@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { latLonToVector3 } from '@/lib/geo'
 import { useWorldStore } from '@/state/worldStore'
 import type { WorldEvent } from '@/lib/worldEvents'
+import { getEventIconTexture, hashPhase } from '@/engine/eventIcons'
 
 const COLORS = { quake: 0xff5c49, wildfire: 0xffa14a, storm: 0x9a7bff, launch: 0x45d8ff } as const
 
@@ -10,19 +11,13 @@ interface MarkerEntry {
   event: WorldEvent
   phase: number
   ripple?: THREE.Mesh
-  core: THREE.Mesh
+  core: THREE.Sprite
 }
 
 function additiveMat(color: number, opacity: number): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({
     color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false,
   })
-}
-
-function hashPhase(id: string): number {
-  let h = 0
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
-  return (h >>> 0) % 100 / 100 * Math.PI * 2
 }
 
 export class EventLayer {
@@ -49,6 +44,9 @@ export class EventLayer {
           obj.geometry.dispose()
           ;(obj.material as THREE.Material).dispose()
         }
+        if (obj instanceof THREE.Sprite) {
+          obj.material.dispose() // material only — texture is the shared cache
+        }
       })
     }
     this.markers.clear()
@@ -70,22 +68,28 @@ export class EventLayer {
       root.lookAt(pos.clone().multiplyScalar(2)) // +Z faces outward along the surface normal
 
       const color = COLORS[event.kind]
-      let core: THREE.Mesh
-      let ripple: THREE.Mesh | undefined
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: getEventIconTexture(event.kind),
+          color,
+          transparent: true,
+          opacity: 0.95,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      )
+      sprite.scale.setScalar(0.03)
+      root.add(sprite)
+      const core = sprite
 
+      let ripple: THREE.Mesh | undefined
       if (event.kind === 'quake') {
-        core = new THREE.Mesh(new THREE.RingGeometry(0.012, 0.016, 32), additiveMat(color, 0.9))
         ripple = new THREE.Mesh(new THREE.RingGeometry(0.012, 0.014, 32), additiveMat(color, 0.5))
         root.add(ripple)
-      } else if (event.kind === 'wildfire') {
-        core = new THREE.Mesh(new THREE.SphereGeometry(0.008, 12, 12), additiveMat(color, 0.8))
       } else if (event.kind === 'storm') {
-        core = new THREE.Mesh(new THREE.RingGeometry(0.014, 0.02, 32), additiveMat(color, 0.75))
-      } else {
-        core = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.024, 12), additiveMat(color, 0.9))
-        core.rotation.x = Math.PI / 2 // cone axis along +Z (outward)
+        ripple = new THREE.Mesh(new THREE.RingGeometry(0.016, 0.02, 32), additiveMat(color, 0.4))
+        root.add(ripple)
       }
-      root.add(core)
 
       this.group.add(root)
       this.markers.set(event.id, { root, event, phase: hashPhase(event.id), core, ripple })
@@ -101,9 +105,10 @@ export class EventLayer {
         ripple.scale.setScalar(1 + cycle * 2)
         ;(ripple.material as THREE.MeshBasicMaterial).opacity = 0.5 * (1 - cycle)
       } else if (event.kind === 'wildfire') {
-        ;(core.material as THREE.MeshBasicMaterial).opacity = 0.55 + 0.3 * Math.sin(t * 7)
+        ;(core.material as THREE.SpriteMaterial).opacity = 0.7 + 0.25 * Math.sin(t * 7)
       } else if (event.kind === 'storm') {
-        core.scale.setScalar(1 + 0.15 * Math.sin(t * 2))
+        ;(core.material as THREE.SpriteMaterial).rotation = -t * 0.8
+        if (ripple) ripple.scale.setScalar(1 + 0.15 * Math.sin(t * 2))
       }
     }
   }

@@ -3,16 +3,10 @@ import { orbitPathPoints, propagate, sceneFromEci } from '@/lib/orbits'
 import { useGameStore, previewElements, burnCost } from '@/state/gameStore'
 import { buildSatelliteModel, type SatelliteModel } from '@/engine/satelliteModel'
 import { subsolarPoint, latLonToVector3 } from '@/lib/geo'
+import { hashPhase } from '@/engine/eventIcons'
 
 const GHOST = 0xffb86b
 const SELECTED = 0xa8ecff
-
-// same as EventLayer's; consolidate when shared module appears
-function hashPhase(id: string): number {
-  let h = 0
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
-  return (h >>> 0) % 100 / 100 * Math.PI * 2
-}
 
 /** Renders the fleet: marker + orbit ribbon per satellite, plus the burn-preview ghost orbit. */
 export class SatelliteLayer {
