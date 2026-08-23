@@ -7,6 +7,9 @@ import { FilmPass } from 'three/addons/postprocessing/FilmPass.js'
 import { createEarthMaterial } from '@/engine/earthMaterial'
 import { createAtmosphereMaterial } from '@/engine/atmosphereMaterial'
 import { EARTH_RADIUS, latLonToVector3, subsolarPoint } from '@/lib/geo'
+import { SatelliteLayer } from '@/engine/SatelliteLayer'
+import { simNow } from '@/lib/simTime'
+import { useGameStore } from '@/state/gameStore'
 
 export class GlobeEngine {
   private renderer: THREE.WebGLRenderer
@@ -23,6 +26,8 @@ export class GlobeEngine {
   private introStart: number | null = null
   private static readonly INTRO_SECONDS = 3.5
   protected earth: THREE.Mesh
+  private satLayer: SatelliteLayer
+  private pointerDown: { x: number; y: number } | null = null
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
@@ -90,6 +95,12 @@ export class GlobeEngine {
 
     this.scene.add(this.buildStarfield())
 
+    this.satLayer = new SatelliteLayer()
+    this.scene.add(this.satLayer.group)
+
+    canvas.addEventListener('pointerdown', this.onPointerDown)
+    canvas.addEventListener('pointerup', this.onPointerUp)
+
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
     this.composer.addPass(
@@ -100,6 +111,27 @@ export class GlobeEngine {
     this.resizeObserver = new ResizeObserver(() => this.handleResize())
     this.resizeObserver.observe(canvas.parentElement ?? canvas)
     this.handleResize()
+  }
+
+  private onPointerDown = (ev: PointerEvent) => {
+    this.pointerDown = { x: ev.clientX, y: ev.clientY }
+  }
+
+  private onPointerUp = (ev: PointerEvent) => {
+    const down = this.pointerDown
+    this.pointerDown = null
+    if (!down) return
+    if (Math.hypot(ev.clientX - down.x, ev.clientY - down.y) > 6) return // drag, not click
+
+    const rect = this.canvas.getBoundingClientRect()
+    const ndc = new THREE.Vector2(
+      ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+      -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+    )
+    const raycaster = new THREE.Raycaster()
+    raycaster.setFromCamera(ndc, this.camera)
+    const id = this.satLayer.pickSatelliteId(raycaster)
+    useGameStore.getState().select(id)
   }
 
   private buildStarfield(): THREE.Points {
@@ -168,6 +200,7 @@ export class GlobeEngine {
     }
     this.updateSun()
     if (this.clouds) this.clouds.rotation.y = elapsedSeconds * 0.004
+    this.satLayer.update(simNow())
   }
 
   start() {
@@ -205,6 +238,9 @@ export class GlobeEngine {
     this.disposedFlag = true
     cancelAnimationFrame(this.frameHandle)
     this.resizeObserver.disconnect()
+    this.canvas.removeEventListener('pointerdown', this.onPointerDown)
+    this.canvas.removeEventListener('pointerup', this.onPointerUp)
+    this.satLayer.dispose()
     this.controls.dispose()
     this.composer?.dispose()
     this.scene.traverse((obj) => {
