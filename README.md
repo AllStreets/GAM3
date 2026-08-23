@@ -6,7 +6,7 @@ A browser game about running a private orbital agency over a living Earth —
 real orbital mechanics, real live world events, and an AI-woven world that
 grows differently for every player.
 
-**Status:** Plan 6 (AI layer v1 — playstyle profile + Claude situation briefings with real-event missions) complete.
+**Status:** Plan 7A (foundations of play — found an agency, contracts, maneuver-to-intercept, economy, guide) complete.
 
 ## Stack
 
