@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import FleetPanel from '@/components/FleetPanel'
+import EventsPanel from '@/components/EventsPanel'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -28,6 +29,7 @@ export default function Hud() {
         </p>
       </header>
       <FleetPanel />
+      <EventsPanel />
     </div>
   )
 }
