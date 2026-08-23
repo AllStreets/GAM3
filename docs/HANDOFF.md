@@ -16,6 +16,7 @@ HYPERION is Connor's game: command a satellite fleet over a **cinematic, living,
 | 4 — Game feel | Flying the burn: IGNITE → chase cam → HOLD SPACE + A/D trim → quality scales fuel overspend (cost×1.25 arm margin). Synthesized WebAudio (`src/audio/AudioEngine.ts` — ambient/chirps/rumble/stinger, zero assets), screen shake, BurnOverlay |
 | 5 — Visuals | Procedural 3D satellites (gold bus, solar wings, dish, nav blink; sun-tracking via `group.up`; DirectionalLight follows terminator), canvas-drawn event icon sprites (seismic/flame/cyclone/rocket) |
 | 6 — AI v1 | Playstyle profile (`src/lib/profile.ts`, localStorage, tracks burns/quality/aborts/focus-kinds/sessions) → `/api/briefing` (claude-opus-4-8, `messages.parse` + zod structured outputs, effort low, respectful-framing system prompt, body validation, ALWAYS-200 fallback) → BriefingPanel with per-player missions on REAL events + TRACK buttons |
+| 7A — Game foundations | **It's a game now.** Found an agency (name + procedural SVG emblem + colorway, `FoundingScreen`); 5-satellite fleet w/ diverse planes; contracts from AI briefing (`contractStore`, accept→active→complete/expire); **maneuver-to-intercept** — fly a burn to bring a satellite's ground-track over a real-event target (`src/lib/intercept.ts` closest-approach solver; `ContractLayer` target ring + ground-track + marker; `InterceptReadout` ghost-aware closest-approach HUD); lean economy (`agencyStore` funding+reputation, refuel, buy-satellite); CONTRACTS + AGENCY panels (right-rail flex stack); field GUIDE (`?`); effect-based store hydration (reload-safe); all client-side localStorage. Spec: `docs/superpowers/specs/2026-08-23-hyperion-game-layer-design.md` |
 
 **Gates:** 59 unit tests, 4 e2e (Playwright, includes console-error + non-black-canvas checks), tsc clean. **Infra:** GitHub `AllStreets/GAM3` → Vercel project `hyperion` auto-deploys main; `ANTHROPIC_API_KEY` in Vercel prod+preview env (Sensitive) and `.env.local` (gitignored; verified never committed). **Port 3100 — never 3000 (AgentZeus owns 3000).**
 
@@ -28,10 +29,13 @@ HYPERION is Connor's game: command a satellite fleet over a **cinematic, living,
 
 ## Roadmap (agreed + spec-derived)
 
-1. **Objectives/contracts economy** (Connor's #1): mission acceptance + completion detection (orbital-pass geometry over event lat/lon is computable from `orbits.ts`), funding/reputation, fleet growth (buy satellites/instruments). Client-side first; persistence follows.
-2. **Persistence**: Neon Postgres + Clerk via Vercel Marketplace (`vercel integration add` — CLI now authenticated). NEVER Supabase (Connor has no free projects). Moves profile/fleet server-side, enables true living-world ticks + GDACS ingestion (ruled: still v1 scope, joins the server ingester).
-3. **Storylines/rivals**: LLM fiction weaver per spec — rival agency with memory, personalized arcs, situation-room drama. All LLM work server-side between play moments; schema-validated; engine enforces rules.
-4. **Satellite fidelity pass** + more flying moments (re-entry corridor is spec'd, client-only) + polish backlog below.
+The game-layer spec (`docs/superpowers/specs/2026-08-23-hyperion-game-layer-design.md`) is the binding authority for the next plans. It splits into 7A (DONE) and 7B.
+
+1. **Plan 7B — Soul & spectacle** (NEXT, spec §14): the "while you were away" cold-open; agency **archetypes** (relief/research/defense from contract choices → bias contract stream + flavor the AI briefing); named satellites + service records + real loss; **satellite specializations** (imaging/comms/thermal — which bird you send matters); one **emergency** type (debris-conjunction → evasive burn or lose the sat); the **cinematic pass** + operational-tempo + relief-impact acknowledgment; **maneuver scoring + trick-shots**; **orbital postcards**; first-run walkthrough; UX polish. Carry these ledger notes from 7A: reachability-aware contract generation (reuse `closestApproach` across the fleet at offer time — 5 diverse planes mitigate but don't fully solve); economy balance (a full refuel §1080 > a single reward §~500); a verified end-to-end contract completion (manual or e2e with an on-track seeded target).
+2. **Plan 8 — City reveal**: on focusing a place, deepen the fly-to into a cinematic push-in, then reveal a real web-pulled image (Wikimedia Commons geosearch, keyless) + map. Slots into the cinematic-pass beat.
+3. **Plan 9 — Story engine & rivals**: LLM fiction weaver — rival agency with memory, personalized escalating arcs, situation-room drama. Server-side, schema-validated, engine-enforced.
+4. **Persistence**: Neon Postgres + Clerk via Vercel Marketplace (`vercel integration add` — CLI authenticated). NEVER Supabase. Moves profile/agency/fleet/contracts server-side, enables true living-world ticks + GDACS ingestion.
+5. **Satellite fidelity pass** + more flying moments (re-entry corridor spec'd, client-only) + polish backlog below.
 
 ## How This Project Is Built (process that's been working)
 
