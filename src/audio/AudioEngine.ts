@@ -7,6 +7,7 @@ class AudioEngine {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
   private rumbleGain: GainNode | null = null
+  private rumbleSrc: AudioBufferSourceNode | null = null
   private armed = false
 
   /** Install one-time gesture listeners that boot the context + ambient bed. */
@@ -108,6 +109,8 @@ class AudioEngine {
     if (level <= 0) {
       if (this.rumbleGain) {
         this.rumbleGain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.08)
+        this.rumbleSrc?.stop(this.ctx.currentTime + 0.4)
+        this.rumbleSrc = null
         const dying = this.rumbleGain
         setTimeout(() => { dying.disconnect() }, 400)
         this.rumbleGain = null
@@ -135,6 +138,7 @@ class AudioEngine {
       this.rumbleGain.gain.value = 0
       src.connect(filter).connect(this.rumbleGain).connect(this.master)
       src.start()
+      this.rumbleSrc = src
     }
     this.rumbleGain.gain.setTargetAtTime(Math.min(1, level) * 1.6, this.ctx.currentTime, 0.06)
   }

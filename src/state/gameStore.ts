@@ -120,6 +120,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   beginBurn: () => {
+    if (get().burnSession) return false
     const { satellites, selectedId, burnPlan } = get()
     const sat = satellites.find((s) => s.id === selectedId)
     if (!sat) return false

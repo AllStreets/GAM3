@@ -117,4 +117,12 @@ describe('burn session', () => {
   it('completeBurn with no session is a no-op returning false', () => {
     expect(useGameStore.getState().completeBurn(0, 1)).toBe(false)
   })
+
+  it('beginBurn refuses while a session is active', () => {
+    const st = useGameStore.getState()
+    st.select(st.satellites[0].id)
+    st.setBurnPlan({ prograde: 40 })
+    expect(useGameStore.getState().beginBurn()).toBe(true)
+    expect(useGameStore.getState().beginBurn()).toBe(false)
+  })
 })

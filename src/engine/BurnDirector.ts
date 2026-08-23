@@ -19,6 +19,7 @@ export class BurnDirector {
   private qualityAccum = 0
   private qualityTime = 0
   private completionFired = false
+  private sessionRef: object | null = null
 
   private onKeyDown = (ev: KeyboardEvent) => {
     if (ev.code === 'Space') { this.keys.throttle = true; if (this.active) ev.preventDefault() }
@@ -50,14 +51,16 @@ export class BurnDirector {
         this.active = false
         audio.setRumble(0)
       }
+      this.sessionRef = null
       return
     }
 
-    if (!this.active) {
-      this.active = true
+    if (session !== this.sessionRef) {
+      this.sessionRef = session
       this.qualityAccum = 0
       this.qualityTime = 0
       this.completionFired = false
+      this.active = true
     }
 
     const sat = state.satellites.find((s) => s.id === session.satId)

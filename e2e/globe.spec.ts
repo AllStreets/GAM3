@@ -52,7 +52,7 @@ test('fleet panel selects a satellite and plans a burn', async ({ page }) => {
   await expect(page.getByText(/BURN IN PROGRESS/)).toBeVisible()
   // Fly the burn: hold SPACE for just over the 2s minimum duration.
   await page.keyboard.down('Space')
-  await page.waitForTimeout(2400)
+  await page.waitForTimeout(3600)
   await page.keyboard.up('Space')
   await expect(page.getByText(/BURN IN PROGRESS/)).not.toBeVisible({ timeout: 5_000 })
   // Fuel was spent (was 450/450).

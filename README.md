@@ -16,7 +16,7 @@ Marketplace, from Plan 3) · Anthropic API (from Plan 5)
 ## Develop
 
     pnpm install
-    pnpm dev        # http://localhost:3000
+    pnpm dev        # http://localhost:3100
     pnpm test       # unit tests (orbital/geo math)
     pnpm e2e        # Playwright smoke test
 
