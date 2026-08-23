@@ -18,6 +18,7 @@ export class BurnDirector {
   private keys = { throttle: false, left: false, right: false }
   private qualityAccum = 0
   private qualityTime = 0
+  private completionFired = false
 
   private onKeyDown = (ev: KeyboardEvent) => {
     if (ev.code === 'Space') { this.keys.throttle = true; if (this.active) ev.preventDefault() }
@@ -56,6 +57,7 @@ export class BurnDirector {
       this.active = true
       this.qualityAccum = 0
       this.qualityTime = 0
+      this.completionFired = false
     }
 
     const sat = state.satellites.find((s) => s.id === session.satId)
@@ -88,7 +90,8 @@ export class BurnDirector {
       audio.setRumble(0)
     }
 
-    if (live.progress >= 1) {
+    if (live.progress >= 1 && !this.completionFired) {
+      this.completionFired = true
       const quality = live.quality
       state.completeBurn(simNow(), quality)
       this.shake = 0.55 + 0.45 * (1 - quality)
