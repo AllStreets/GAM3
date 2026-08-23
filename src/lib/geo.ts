@@ -38,6 +38,7 @@ export function subsolarPoint(date: Date): { lat: number; lon: number } {
   const utcHours =
     date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600
   let lon = (12 - utcHours) * 15
+  // Result is in (-180, 180]: exactly 180 (00:00 UTC) is NOT wrapped to -180 — same meridian.
   if (lon > 180) lon -= 360
   if (lon < -180) lon += 360
 

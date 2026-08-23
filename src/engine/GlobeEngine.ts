@@ -25,7 +25,7 @@ export class GlobeEngine {
   protected earth: THREE.Mesh
 
   constructor(private canvas: HTMLCanvasElement) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000)
@@ -118,10 +118,10 @@ export class GlobeEngine {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
     const material = new THREE.PointsMaterial({
       color: 0xbfd4e6,
-      size: 0.05,
+      size: 0.22,
       sizeAttenuation: true,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.9,
       depthWrite: false,
     })
     return new THREE.Points(geometry, material)
