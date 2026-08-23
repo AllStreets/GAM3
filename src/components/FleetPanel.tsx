@@ -36,9 +36,11 @@ export default function FleetPanel() {
   const resetBurnPlan = useGameStore((s) => s.resetBurnPlan)
   const executeBurn = useGameStore((s) => s.executeBurn)
 
-  // Re-render telemetry at 4 Hz
+  // Re-render telemetry at 4 Hz; mounted gates hydration-sensitive output
+  const [mounted, setMounted] = useState(false)
   const [, force] = useState(0)
   useEffect(() => {
+    setMounted(true)
     const id = setInterval(() => force((n) => n + 1), 250)
     return () => clearInterval(id)
   }, [])
@@ -65,10 +67,10 @@ export default function FleetPanel() {
                 >
                   <span className="flex items-center justify-between">
                     <span className="font-semibold">{sat.name}</span>
-                    <span className="tabular-nums opacity-70">{t.altKm.toFixed(0)} km</span>
+                    <span className="tabular-nums opacity-70">{mounted ? `${t.altKm.toFixed(0)} km` : '— km'}</span>
                   </span>
                   <span className="mt-0.5 flex items-center justify-between tabular-nums opacity-70">
-                    <span>{t.speedKms.toFixed(2)} km/s</span>
+                    <span>{mounted ? `${t.speedKms.toFixed(2)} km/s` : '— km/s'}</span>
                     <span>Δv {sat.fuel.toFixed(0)}/{sat.fuelCapacity} m/s</span>
                   </span>
                   <span className="mt-1 block h-1 w-full rounded bg-white/10">
