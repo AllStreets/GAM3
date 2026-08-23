@@ -5,6 +5,7 @@ import {
   propagate, sceneFromEci, eciFromScene,
   type OrbitalElements,
 } from './orbits'
+import { elementsFromState, applyDeltaV, orbitPathPoints, apoapsis, periapsis } from './orbits'
 
 const issLike: OrbitalElements = {
   a: (6371 + 400) / 6371, e: 0.001, i: (51.6 * Math.PI) / 180,
@@ -77,5 +78,58 @@ describe('frame mapping', () => {
     const v = new Vector3(0.3, -0.7, 2.1)
     const back = eciFromScene(sceneFromEci(v))
     expect(back.distanceTo(v)).toBeLessThan(1e-12)
+  })
+})
+
+describe('elementsFromState', () => {
+  it('round-trips: elements -> state -> elements agree on future propagation', () => {
+    const t0 = 12345
+    const s0 = propagate(issLike, t0)
+    const el2 = elementsFromState(s0.position, s0.velocity, t0)
+    for (const dt of [0, 500, 3000]) {
+      const a = propagate(issLike, t0 + dt).position
+      const b = propagate(el2, t0 + dt).position
+      expect(a.distanceTo(b)).toBeLessThan(1e-6)
+    }
+  })
+  it('recovers a, e, i for the seed orbit', () => {
+    const s = propagate(issLike, 999)
+    const el2 = elementsFromState(s.position, s.velocity, 999)
+    expect(el2.a).toBeCloseTo(issLike.a, 6)
+    expect(el2.e).toBeCloseTo(issLike.e, 5)
+    expect(el2.i).toBeCloseTo(issLike.i, 6)
+  })
+})
+
+describe('applyDeltaV', () => {
+  it('prograde burn raises apoapsis and energy', () => {
+    const el2 = applyDeltaV(issLike, 100, { prograde: 50 * MS_TO_ER, normal: 0, radial: 0 })
+    expect(apoapsis(el2)).toBeGreaterThan(apoapsis(issLike))
+    expect(el2.a).toBeGreaterThan(issLike.a)
+  })
+  it('retrograde burn lowers periapsis', () => {
+    const el2 = applyDeltaV(issLike, 100, { prograde: -50 * MS_TO_ER, normal: 0, radial: 0 })
+    expect(periapsis(el2)).toBeLessThan(periapsis(issLike))
+  })
+  it('normal burn changes inclination-plane (orbit normal direction)', () => {
+    const el2 = applyDeltaV(issLike, 100, { prograde: 0, normal: 200 * MS_TO_ER, radial: 0 })
+    expect(Math.abs(el2.i - issLike.i)).toBeGreaterThan(1e-4)
+  })
+  it('zero burn is identity (propagation-equivalent)', () => {
+    const el2 = applyDeltaV(issLike, 777, { prograde: 0, normal: 0, radial: 0 })
+    const a = propagate(issLike, 2000).position
+    const b = propagate(el2, 2000).position
+    expect(a.distanceTo(b)).toBeLessThan(1e-6)
+  })
+})
+
+describe('orbitPathPoints', () => {
+  it('returns the requested number of points, all on the ellipse radius range', () => {
+    const pts = orbitPathPoints(issLike, 64)
+    expect(pts).toHaveLength(64)
+    for (const p of pts) {
+      expect(p.length()).toBeGreaterThanOrEqual(periapsis(issLike) - 1e-9)
+      expect(p.length()).toBeLessThanOrEqual(apoapsis(issLike) + 1e-9)
+    }
   })
 })
