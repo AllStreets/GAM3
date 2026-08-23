@@ -12,6 +12,8 @@ import { EventLayer } from '@/engine/EventLayer'
 import { simNow } from '@/lib/simTime'
 import { useGameStore } from '@/state/gameStore'
 import { useWorldStore } from '@/state/worldStore'
+import { BurnDirector } from '@/engine/BurnDirector'
+import { audio } from '@/audio/AudioEngine'
 
 export class GlobeEngine {
   private renderer: THREE.WebGLRenderer
@@ -33,6 +35,8 @@ export class GlobeEngine {
   private worldUnsub?: () => void
   private flight: { from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
   private pointerDown: { x: number; y: number } | null = null
+  private burnDirector = new BurnDirector()
+  private lastElapsed = 0
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
@@ -126,6 +130,8 @@ export class GlobeEngine {
     this.resizeObserver = new ResizeObserver(() => this.handleResize())
     this.resizeObserver.observe(canvas.parentElement ?? canvas)
     this.handleResize()
+
+    audio.armGesture()
   }
 
   private onPointerDown = (ev: PointerEvent) => {
@@ -207,6 +213,8 @@ export class GlobeEngine {
 
   /** Per-frame hook — extended by later tasks. */
   protected update(elapsedSeconds: number) {
+    const dt = Math.min(0.05, elapsedSeconds - this.lastElapsed)
+    this.lastElapsed = elapsedSeconds
     if (this.introStart === null) this.introStart = elapsedSeconds
     const t = (elapsedSeconds - this.introStart) / GlobeEngine.INTRO_SECONDS
     if (t < 1) {
@@ -237,10 +245,22 @@ export class GlobeEngine {
       }
       this.camera.lookAt(0, 0, 0)
     }
+    this.burnDirector.update(dt, this.camera)
+    if (this.burnDirector.active) {
+      this.controls.enabled = false
+      this.flight = null // a burn cancels any event flight
+    }
     this.updateSun()
     if (this.clouds) this.clouds.rotation.y = elapsedSeconds * 0.004
     this.satLayer.update(simNow())
     this.eventLayer.update(elapsedSeconds)
+    if (this.burnDirector.shake > 0.001) {
+      this.camera.position.x += (Math.random() - 0.5) * this.burnDirector.shake * 0.012
+      this.camera.position.y += (Math.random() - 0.5) * this.burnDirector.shake * 0.012
+      this.burnDirector.shake *= Math.exp(-3.2 * dt)
+    } else {
+      this.burnDirector.shake = 0
+    }
   }
 
   start() {
@@ -281,6 +301,7 @@ export class GlobeEngine {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.worldUnsub?.()
+    this.burnDirector.dispose()
     this.eventLayer.dispose()
     this.satLayer.dispose()
     this.controls.dispose()
