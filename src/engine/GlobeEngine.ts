@@ -1,5 +1,9 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { FilmPass } from 'three/addons/postprocessing/FilmPass.js'
 import { createEarthMaterial } from '@/engine/earthMaterial'
 import { createAtmosphereMaterial } from '@/engine/atmosphereMaterial'
 import { EARTH_RADIUS, latLonToVector3, subsolarPoint } from '@/lib/geo'
@@ -15,6 +19,9 @@ export class GlobeEngine {
   private clouds?: THREE.Mesh
   private atmosphereMaterial?: THREE.ShaderMaterial
   private disposedFlag = false
+  private composer?: EffectComposer
+  private introStart: number | null = null
+  private static readonly INTRO_SECONDS = 3.5
   protected earth: THREE.Mesh
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -83,6 +90,13 @@ export class GlobeEngine {
 
     this.scene.add(this.buildStarfield())
 
+    this.composer = new EffectComposer(this.renderer)
+    this.composer.addPass(new RenderPass(this.scene, this.camera))
+    this.composer.addPass(
+      new UnrealBloomPass(new THREE.Vector2(1, 1), 0.4, 0.65, 0.82),
+    )
+    this.composer.addPass(new FilmPass(0.18, false))
+
     this.resizeObserver = new ResizeObserver(() => this.handleResize())
     this.resizeObserver.observe(canvas.parentElement ?? canvas)
     this.handleResize()
@@ -118,6 +132,7 @@ export class GlobeEngine {
     const { clientWidth: w, clientHeight: h } = host
     if (w === 0 || h === 0) return
     this.renderer.setSize(w, h, false)
+    this.composer?.setSize(w, h)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
   }
@@ -135,6 +150,22 @@ export class GlobeEngine {
 
   /** Per-frame hook — extended by later tasks. */
   protected update(elapsedSeconds: number) {
+    if (this.introStart === null) this.introStart = elapsedSeconds
+    const t = (elapsedSeconds - this.introStart) / GlobeEngine.INTRO_SECONDS
+    if (t < 1) {
+      const ease = 1 - Math.pow(1 - t, 3) // cubic ease-out
+      const dist = EARTH_RADIUS * (7.5 - 4.5 * ease) // 7.5 -> 3.0
+      const angle = -0.5 + 0.5 * ease
+      this.cameraRef.position.set(
+        dist * Math.sin(angle),
+        EARTH_RADIUS * (1.4 - 0.8 * ease),
+        dist * Math.cos(angle),
+      )
+      this.cameraRef.lookAt(0, 0, 0)
+      this.controlsRef.enabled = false
+    } else {
+      this.controlsRef.enabled = true
+    }
     this.updateSun()
     if (this.clouds) this.clouds.rotation.y = elapsedSeconds * 0.004
   }
@@ -153,7 +184,8 @@ export class GlobeEngine {
 
   /** Render hook — replaced by the composer in Task 6. */
   protected render() {
-    this.renderer.render(this.scene, this.camera)
+    if (this.composer) this.composer.render()
+    else this.renderer.render(this.scene, this.camera)
   }
 
   protected get sceneRef() {
@@ -174,6 +206,7 @@ export class GlobeEngine {
     cancelAnimationFrame(this.frameHandle)
     this.resizeObserver.disconnect()
     this.controls.dispose()
+    this.composer?.dispose()
     this.scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh || obj instanceof THREE.Points) {
         obj.geometry.dispose()
