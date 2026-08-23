@@ -42,4 +42,19 @@ describe('worldStore', () => {
     useWorldStore.getState().focusEvent(null)
     expect(useWorldStore.getState().focusedId).toBeNull()
   })
+
+  it('setEvents with identical fingerprints preserves array reference', () => {
+    useWorldStore.getState().setEvents([ev('a'), ev('b')], true, 't1')
+    const first = useWorldStore.getState().events
+    // New array, same ids and times
+    useWorldStore.getState().setEvents([ev('a'), ev('b')], true, 't2')
+    expect(useWorldStore.getState().events).toBe(first)
+  })
+
+  it('setEvents with different content replaces array reference', () => {
+    useWorldStore.getState().setEvents([ev('a'), ev('b')], true, 't1')
+    const first = useWorldStore.getState().events
+    useWorldStore.getState().setEvents([ev('a'), ev('c')], true, 't2')
+    expect(useWorldStore.getState().events).not.toBe(first)
+  })
 })

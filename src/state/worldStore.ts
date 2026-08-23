@@ -21,9 +21,14 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     set((s) => {
       // Never blank a non-empty world (spec: the game never presents an empty world).
       const next = events.length === 0 && s.events.length > 0 ? s.events : events
+      const same =
+        next !== s.events &&
+        next.length === s.events.length &&
+        next.every((e, i) => e.id === s.events[i].id && e.time === s.events[i].time)
+      const events2 = same ? s.events : next
       const focusedId =
-        s.focusedId && next.some((e) => e.id === s.focusedId) ? s.focusedId : null
-      return { events: next, sourcesOk, lastFetch: fetchedAt, focusedId }
+        s.focusedId && events2.some((e) => e.id === s.focusedId) ? s.focusedId : null
+      return { events: events2, sourcesOk, lastFetch: fetchedAt, focusedId }
     }),
 
   focusEvent: (id) => set({ focusedId: id }),

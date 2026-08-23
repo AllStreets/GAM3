@@ -19,6 +19,12 @@ function additiveMat(color: number, opacity: number): THREE.MeshBasicMaterial {
   })
 }
 
+function hashPhase(id: string): number {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+  return (h >>> 0) % 100 / 100 * Math.PI * 2
+}
+
 export class EventLayer {
   readonly group = new THREE.Group()
   private markers = new Map<string, MarkerEntry>()
@@ -27,7 +33,11 @@ export class EventLayer {
   constructor() {
     this.rebuild()
     this.unsubscribe = useWorldStore.subscribe((state, prev) => {
-      if (state.events !== prev.events || state.focusedId !== prev.focusedId) this.rebuild()
+      if (state.events !== prev.events) {
+        this.rebuild()
+      } else if (state.focusedId !== prev.focusedId) {
+        this.applyFocus(state.focusedId)
+      }
     })
   }
 
@@ -44,10 +54,16 @@ export class EventLayer {
     this.markers.clear()
   }
 
+  private applyFocus(focusedId: string | null) {
+    for (const entry of this.markers.values()) {
+      entry.root.scale.setScalar(entry.event.id === focusedId ? 1.8 : 1)
+    }
+  }
+
   private rebuild() {
     this.clear()
     const { events, focusedId } = useWorldStore.getState()
-    for (const [idx, event] of events.entries()) {
+    for (const event of events) {
       const root = new THREE.Group()
       const pos = latLonToVector3(event.lat, event.lon, 1.005)
       root.position.copy(pos)
@@ -71,11 +87,10 @@ export class EventLayer {
       }
       root.add(core)
 
-      if (event.id === focusedId) root.scale.setScalar(1.8)
-
       this.group.add(root)
-      this.markers.set(event.id, { root, event, phase: idx * 0.7, core, ripple })
+      this.markers.set(event.id, { root, event, phase: hashPhase(event.id), core, ripple })
     }
+    this.applyFocus(focusedId)
   }
 
   update(elapsedSeconds: number) {

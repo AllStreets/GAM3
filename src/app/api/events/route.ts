@@ -8,7 +8,7 @@ const EONET_URL = 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=6
 const LAUNCH_URL = 'https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=12&mode=list'
 
 async function fetchJson(url: string, revalidate: number): Promise<unknown> {
-  const res = await fetch(url, { next: { revalidate } })
+  const res = await fetch(url, { next: { revalidate }, signal: AbortSignal.timeout(8_000) })
   if (!res.ok) throw new Error(`${url} -> ${res.status}`)
   return res.json()
 }
