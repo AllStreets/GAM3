@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import FleetPanel from '@/components/FleetPanel'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -26,6 +27,7 @@ export default function Hud() {
           {clock ?? '--:--:-- UTC'}
         </p>
       </header>
+      <FleetPanel />
     </div>
   )
 }
