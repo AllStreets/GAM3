@@ -11,6 +11,7 @@ export class GlobeEngine {
   private frameHandle = 0
   private resizeObserver: ResizeObserver
   private earthMaterial?: THREE.ShaderMaterial
+  private disposedFlag = false
   protected earth: THREE.Mesh
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -39,9 +40,18 @@ export class GlobeEngine {
       loader.loadAsync('/textures/earth-day.jpg'),
       loader.loadAsync('/textures/earth-night.jpg'),
     ]).then(([day, night]) => {
+      if (this.disposedFlag) {
+        day.dispose()
+        night.dispose()
+        return
+      }
+      const old = this.earth.material as THREE.Material
+      old.dispose()
       this.earthMaterial = createEarthMaterial(day, night)
       this.earth.material = this.earthMaterial
       this.updateSun()
+    }).catch((err: unknown) => {
+      console.error('GlobeEngine: failed to load earth textures', err)
     })
 
     this.scene.add(this.buildStarfield())
@@ -128,6 +138,7 @@ export class GlobeEngine {
   }
 
   dispose() {
+    this.disposedFlag = true
     cancelAnimationFrame(this.frameHandle)
     this.resizeObserver.disconnect()
     this.controls.dispose()
