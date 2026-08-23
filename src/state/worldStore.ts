@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { WorldEvent } from '@/lib/worldEvents'
+import { recordFocus } from '@/lib/profile'
 
 interface WorldState {
   events: WorldEvent[]
@@ -31,7 +32,13 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       return { events: events2, sourcesOk, lastFetch: fetchedAt, focusedId }
     }),
 
-  focusEvent: (id) => set({ focusedId: id }),
+  focusEvent: (id) => {
+    if (id !== null) {
+      const ev = get().events.find((e) => e.id === id)
+      if (ev) recordFocus(ev.kind)
+    }
+    set({ focusedId: id })
+  },
 
   resetForTest: () => set({ events: [], focusedId: null, lastFetch: null, sourcesOk: true }),
 }))

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import {
   applyDeltaV, MS_TO_ER, type OrbitalElements,
 } from '@/lib/orbits'
+import { recordBurn, recordAbort } from '@/lib/profile'
 
 export interface Satellite {
   id: string
@@ -146,12 +147,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       burnSession: null,
       burnPlan: { prograde: 0, normal: 0, radial: 0 },
     })
+    recordBurn(burnSession.cost, quality)
     const live = get().burnLive
     live.needle = 0; live.progress = 0; live.quality = 1
     return true
   },
 
-  abortBurn: () => set({ burnSession: null }),
+  abortBurn: () => { recordAbort(); set({ burnSession: null }) },
 
   resetForTest: () => {
     const live = get().burnLive
