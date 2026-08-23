@@ -8,6 +8,7 @@ import BriefingPanel from '@/components/BriefingPanel'
 import FoundingScreen from '@/components/FoundingScreen'
 import AgencyBar from '@/components/AgencyBar'
 import ContractsPanel from '@/components/ContractsPanel'
+import InterceptReadout from '@/components/InterceptReadout'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -39,6 +40,7 @@ export default function Hud() {
       <BriefingPanel />
       <AgencyBar />
       <ContractsPanel />
+      <InterceptReadout />
       <FoundingScreen />
     </div>
   )
