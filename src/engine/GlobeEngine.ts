@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { EARTH_RADIUS } from '@/lib/geo'
+import { createEarthMaterial } from '@/engine/earthMaterial'
+import { EARTH_RADIUS, latLonToVector3, subsolarPoint } from '@/lib/geo'
 
 export class GlobeEngine {
   private renderer: THREE.WebGLRenderer
@@ -9,6 +10,7 @@ export class GlobeEngine {
   private controls: OrbitControls
   private frameHandle = 0
   private resizeObserver: ResizeObserver
+  private earthMaterial?: THREE.ShaderMaterial
   protected earth: THREE.Mesh
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -26,12 +28,21 @@ export class GlobeEngine {
     this.controls.enablePan = false
     this.controls.rotateSpeed = 0.45
 
-    // Placeholder material — replaced by the day/night shader in Task 4.
     this.earth = new THREE.Mesh(
       new THREE.SphereGeometry(EARTH_RADIUS, 96, 96),
-      new THREE.MeshBasicMaterial({ color: 0x0a2a4a }),
+      new THREE.MeshBasicMaterial({ color: 0x0a2a4a }), // visible until textures load
     )
     this.scene.add(this.earth)
+
+    const loader = new THREE.TextureLoader()
+    Promise.all([
+      loader.loadAsync('/textures/earth-day.jpg'),
+      loader.loadAsync('/textures/earth-night.jpg'),
+    ]).then(([day, night]) => {
+      this.earthMaterial = createEarthMaterial(day, night)
+      this.earth.material = this.earthMaterial
+      this.updateSun()
+    })
 
     this.scene.add(this.buildStarfield())
 
@@ -74,8 +85,17 @@ export class GlobeEngine {
     this.camera.updateProjectionMatrix()
   }
 
+  private updateSun() {
+    if (!this.earthMaterial) return
+    const { lat, lon } = subsolarPoint(new Date())
+    const dir = latLonToVector3(lat, lon, 1).normalize()
+    ;(this.earthMaterial.uniforms.sunDirection.value as THREE.Vector3).copy(dir)
+  }
+
   /** Per-frame hook — extended by later tasks. */
-  protected update(_elapsedSeconds: number) {}
+  protected update(_elapsedSeconds: number) {
+    this.updateSun()
+  }
 
   start() {
     if (this.frameHandle !== 0) return
