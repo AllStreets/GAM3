@@ -33,6 +33,10 @@ The chosen name, emblem id, and colorway persist and appear thereafter in the **
 
 Archetype is **not** chosen here — it emerges from play (§4). Founding stays fast: name, emblem, go.
 
+## 1b. Returning — the "while you were away" cold-open
+
+A player with a saved agency does **not** re-found — but they also don't land cold. Each return opens on a styled **situation-room cold-open**: a short recap of what the *real* world did and what *your fleet* saw since last login — new significant events (from the live feeds, diffed against `lastSeen`), contracts that expired or completed while gone, sim-days elapsed, fuel states. Written by the briefing AI when available (it already receives `lastSeen`), with a deterministic fallback ("While you were away: 3 new events, HYPERION-2 completed 1.4 orbits"). It turns the game from an app you open into a *place your story continues* — a return ritual and a hook. Dismissible into live play in one action.
+
 ## 2. The guide (low-friction learning)
 
 - A **first-run guided walkthrough**: after founding, 3–5 lightweight coach-marks spotlight each panel in turn ("This is your fleet — click a satellite to select it", "Plan a burn here", "Contracts appear here"), dismissible, skippable, shown once.
@@ -94,6 +98,19 @@ When a satellite completes a contract, it's a **set-piece**, not a toast:
 - (Plan 8's city reveal slots into this exact beat — the image blooms in at the pass.)
 - An **operational-tempo** touch: consecutive clean completions build a small momentum/multiplier state, surfaced lightly, to reward a hot streak.
 
+## 9b. Maneuver scoring & orbital trick-shots (the mastery ceiling)
+
+Every flown burn is **scored**, turning each maneuver into a rated moment (a landing-score for orbital mechanics):
+- **Efficiency** — Δv actually needed vs. Δv spent (rewards clean, minimal burns; ties to the existing burn-quality mechanic).
+- **Precision** — how tightly the resulting pass threads the target (closest approach well inside the radius scores higher than a grazing edge).
+- **The trick-shot** — a single maneuver whose new ground-track brings a satellite within range of **two active contracts on one pass** (or one pass completing a contract *and* setting up the next) earns a big bonus + a distinct celebratory beat and a lasting mark on the satellite's service record (§7).
+
+Scores surface as a brief rating on burn completion, feed the operational-tempo streak (§9), and give experts something to chase and brag about. Pure/deterministic scoring math — TDD'd.
+
+## 9c. Orbital postcards (attractive & shareable)
+
+A one-press **capture** turns a beautiful in-game moment into an **orbital postcard**: the current framed view (a satellite crossing the terminator over a city, an aurora, a storm's eye), composited with the agency **emblem**, name, and a caption (location / event / stardate), downloadable as an image. Uses the existing WebGL frame (canvas capture) + a compositing layer — keyless, no external service. Inherently gorgeous, inherently shareable; makes people want to show the game off. A subtle "postcard-worthy" prompt can appear at genuinely cinematic moments (a completing pass, a terminator crossing) without nagging.
+
 ## 10. UX shell (seamless, attractive, low friction)
 
 The founding spec's dark neon situation-room aesthetic, tightened into a cohesive **game UI**: consistent panel chrome, the agency emblem/accent threaded through, clear affordances, controllable friction (accept a contract in one click; the intercept readout removes guesswork; the guide is always a keystroke away). Everything reachable without leaving the globe.
@@ -113,7 +130,7 @@ Client-side (localStorage), consistent with the existing profile — no backend 
 
 - **Resilience:** never an empty contract board (seeded deterministic contracts); intercept solver and economy are pure/deterministic; localStorage failures degrade gracefully (a fresh session, never a crash).
 - **Testing:** pure modules TDD'd with high coverage — geo inverse + great-circle, the intercept/closest-approach solver, the economy and contract state machine, archetype leaning math. Playwright smoke extended: founding flow, accept a contract, guide opens.
-- **v1 scope (this spec):** founding + emblem, guide, the contract loop, maneuver-to-intercept with the live solver + globe legibility, lean economy (refuel + buy satellite), archetypes feeding the stream + AI, named satellites + real loss, one emergency type, the cinematic pass, client-side persistence.
+- **v1 scope (this spec):** founding + emblem, the returning cold-open, guide, the contract loop, maneuver-to-intercept with the live solver + globe legibility, maneuver scoring + trick-shots, lean economy (refuel + buy satellite), archetypes feeding the stream + AI, named satellites + real loss, one emergency type, the cinematic pass, orbital postcards, client-side persistence.
 - **Deferred (later plans):** city reveal (Plan 8); rival agency + AI mystery + seasons + anomaly-hunting (Plan 9); backend persistence + server-authoritative living-world ticks + GDACS (persistence plan); a plane-picker for bought satellites; additional emergency types; deep instrument/upgrade tree.
 - **Non-goals:** multiplayer, PvP, mobile, marketplace.
 
@@ -121,6 +138,6 @@ Client-side (localStorage), consistent with the existing profile — no backend 
 
 This spec is large; it is intended to be implemented as **two sequenced implementation plans** sharing this spec:
 - **Plan 7A — Foundations of play:** founding + emblem + persistence shell, the contract store + state machine, maneuver-to-intercept (geo helpers, intercept solver, globe legibility, bigger tanks), lean economy, the CONTRACTS + AGENCY panels, the guide.
-- **Plan 7B — Soul & spectacle:** archetypes (leaning + AI wiring + stream bias), named satellites + service records + real loss, the emergency system, the cinematic pass + tempo, the first-run walkthrough, UX polish.
+- **Plan 7B — Soul & spectacle:** the returning cold-open, archetypes (leaning + AI wiring + stream bias), named satellites + service records + real loss, the emergency system, the cinematic pass + tempo, maneuver scoring + trick-shots, orbital postcards, the first-run walkthrough, UX polish.
 
 Each plan ships playable and is verified before the next.
