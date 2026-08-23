@@ -79,10 +79,18 @@ Archetype feeds back into the game:
 
 Respectful framing is unchanged across all archetypes — defense/intel jobs are strategic observation and monitoring, never targeting.
 
+## 6b. Relief impact — making the framing land
+
+When a **relief**-tagged contract (a real disaster) completes, the resolution beat includes a brief, concrete **impact acknowledgment** — the good your data did, framed as aiding responders ("Imagery relayed to relief teams · affected area mapped"). Deterministic, respectful, never gamifying the tragedy itself — the reward is explicitly for the *support rendered*. It makes the humanitarian framing land emotionally rather than reading as bare points, and reinforces the founding-spec rule that real victims are never gamified.
+
 ## 7. Named satellites, service records, real loss
 
 - Each satellite has a **callsign** and a **service record**: contracts completed, sim-days in orbit, notable passes. Shown in the fleet panel and on selection.
 - **Real loss:** a satellite can be permanently lost — a botched deorbit, fuel exhaustion far from any tasking, or an unhandled emergency (§8). Loss removes it and its record (a somber beat), but the agency endures — funding always scrapes together a replacement path (never ruin). Losing a long-served bird is a genuine gut-punch, which is the point.
+
+## 7b. Satellite specializations (which bird you send matters)
+
+Each satellite has a **primary capability** — **imaging** (optical passes), **comms** (relay), or **thermal** (heat/fire mapping) — shown on its record and in the fleet panel. Contracts carry a **preferred capability** implied by the event kind (wildfires → thermal, disasters/quakes → imaging, launches/relay needs → comms). Any satellite can complete any contract, but sending the **matching** capability earns a bonus (higher reward + a cleaner pass score, §9b); a mismatch still completes at base value. This makes *which* bird you task a real, cheap tactical choice without a full instrument/upgrade tree (deferred). Bought satellites (§5) are assigned a capability chosen to fill a gap in the current board.
 
 ## 8. Live triage + emergencies
 
@@ -130,7 +138,7 @@ Client-side (localStorage), consistent with the existing profile — no backend 
 
 - **Resilience:** never an empty contract board (seeded deterministic contracts); intercept solver and economy are pure/deterministic; localStorage failures degrade gracefully (a fresh session, never a crash).
 - **Testing:** pure modules TDD'd with high coverage — geo inverse + great-circle, the intercept/closest-approach solver, the economy and contract state machine, archetype leaning math. Playwright smoke extended: founding flow, accept a contract, guide opens.
-- **v1 scope (this spec):** founding + emblem, the returning cold-open, guide, the contract loop, maneuver-to-intercept with the live solver + globe legibility, maneuver scoring + trick-shots, lean economy (refuel + buy satellite), archetypes feeding the stream + AI, named satellites + real loss, one emergency type, the cinematic pass, orbital postcards, client-side persistence.
+- **v1 scope (this spec):** founding + emblem, the returning cold-open, guide, the contract loop, maneuver-to-intercept with the live solver + globe legibility, maneuver scoring + trick-shots, lean economy (refuel + buy satellite), archetypes feeding the stream + AI, named satellites + real loss, satellite specializations, one emergency type, the cinematic pass + relief-impact acknowledgment, orbital postcards, client-side persistence.
 - **Deferred (later plans):** city reveal (Plan 8); rival agency + AI mystery + seasons + anomaly-hunting (Plan 9); backend persistence + server-authoritative living-world ticks + GDACS (persistence plan); a plane-picker for bought satellites; additional emergency types; deep instrument/upgrade tree.
 - **Non-goals:** multiplayer, PvP, mobile, marketplace.
 
@@ -138,6 +146,6 @@ Client-side (localStorage), consistent with the existing profile — no backend 
 
 This spec is large; it is intended to be implemented as **two sequenced implementation plans** sharing this spec:
 - **Plan 7A — Foundations of play:** founding + emblem + persistence shell, the contract store + state machine, maneuver-to-intercept (geo helpers, intercept solver, globe legibility, bigger tanks), lean economy, the CONTRACTS + AGENCY panels, the guide.
-- **Plan 7B — Soul & spectacle:** the returning cold-open, archetypes (leaning + AI wiring + stream bias), named satellites + service records + real loss, the emergency system, the cinematic pass + tempo, maneuver scoring + trick-shots, orbital postcards, the first-run walkthrough, UX polish.
+- **Plan 7B — Soul & spectacle:** the returning cold-open, archetypes (leaning + AI wiring + stream bias), named satellites + service records + real loss, satellite specializations, the emergency system, the cinematic pass + tempo + relief-impact acknowledgment, maneuver scoring + trick-shots, orbital postcards, the first-run walkthrough, UX polish.
 
 Each plan ships playable and is verified before the next.
