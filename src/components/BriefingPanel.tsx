@@ -7,6 +7,9 @@ import { propagate, ER_KM } from '@/lib/orbits'
 import { simNow } from '@/lib/simTime'
 import { profileSummary, recordSession } from '@/lib/profile'
 import { audio } from '@/audio/AudioEngine'
+import { useContractStore } from '@/state/contractStore'
+import { contractsFromBriefing, seedContracts } from '@/lib/contractsFromBriefing'
+import { orbitalPeriod } from '@/lib/orbits'
 
 interface Briefing {
   headline: string
@@ -51,6 +54,11 @@ export default function BriefingPanel() {
       .then((data: { briefing: Briefing }) => {
         setBriefing(data.briefing)
         audio.chirp()
+        const now = simNow()
+        const period = orbitalPeriod(useGameStore.getState().satellites[0].elements.a)
+        const fromAI = contractsFromBriefing(data.briefing.missions, events, now, period)
+        const contracts = fromAI.length ? fromAI : seedContracts(events, now, period)
+        useContractStore.getState().setAvailable(contracts)
       })
       .catch(() => {})
   }, [events])
