@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { createEarthMaterial } from '@/engine/earthMaterial'
+import { createAtmosphereMaterial } from '@/engine/atmosphereMaterial'
 import { EARTH_RADIUS, latLonToVector3, subsolarPoint } from '@/lib/geo'
 
 export class GlobeEngine {
@@ -11,6 +12,8 @@ export class GlobeEngine {
   private frameHandle = 0
   private resizeObserver: ResizeObserver
   private earthMaterial?: THREE.ShaderMaterial
+  private clouds?: THREE.Mesh
+  private atmosphereMaterial?: THREE.ShaderMaterial
   private disposedFlag = false
   protected earth: THREE.Mesh
 
@@ -53,6 +56,30 @@ export class GlobeEngine {
     }).catch((err: unknown) => {
       console.error('GlobeEngine: failed to load earth textures', err)
     })
+
+    this.atmosphereMaterial = createAtmosphereMaterial()
+    const atmosphere = new THREE.Mesh(
+      new THREE.SphereGeometry(EARTH_RADIUS * 1.12, 96, 96),
+      this.atmosphereMaterial,
+    )
+    this.scene.add(atmosphere)
+
+    new THREE.TextureLoader().loadAsync('/textures/clouds.png').then((tex) => {
+      if (this.disposedFlag) {
+        tex.dispose()
+        return
+      }
+      this.clouds = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_RADIUS * 1.008, 96, 96),
+        new THREE.MeshBasicMaterial({
+          map: tex,
+          transparent: true,
+          opacity: 0.55,
+          depthWrite: false,
+        }),
+      )
+      this.scene.add(this.clouds)
+    }).catch(console.error)
 
     this.scene.add(this.buildStarfield())
 
@@ -100,11 +127,15 @@ export class GlobeEngine {
     const { lat, lon } = subsolarPoint(new Date())
     const dir = latLonToVector3(lat, lon, 1).normalize()
     ;(this.earthMaterial.uniforms.sunDirection.value as THREE.Vector3).copy(dir)
+    if (this.atmosphereMaterial) {
+      ;(this.atmosphereMaterial.uniforms.sunDirection.value as THREE.Vector3).copy(dir)
+    }
   }
 
   /** Per-frame hook — extended by later tasks. */
-  protected update(_elapsedSeconds: number) {
+  protected update(elapsedSeconds: number) {
     this.updateSun()
+    if (this.clouds) this.clouds.rotation.y = elapsedSeconds * 0.004
   }
 
   start() {
