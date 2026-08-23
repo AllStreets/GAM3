@@ -6,7 +6,7 @@ A browser game about running a private orbital agency over a living Earth —
 real orbital mechanics, real live world events, and an AI-woven world that
 grows differently for every player.
 
-**Status:** Plan 4 (flying the burn — action layer, synthesized audio, game feel) complete.
+**Status:** Plan 5 (procedural 3D satellites + event icon sprites) complete.
 
 ## Stack
 
