@@ -31,3 +31,24 @@ test('the globe renders without errors', async ({ page }) => {
   })
   expect(isBlack).toBe(false)
 })
+
+test('fleet panel selects a satellite and plans a burn', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByText('HYPERION-1')).toBeVisible()
+  await expect(page.getByText('HYPERION-2')).toBeVisible()
+
+  await page.getByRole('button', { name: /HYPERION-1/ }).click()
+  await expect(page.getByText(/BURN PLAN — HYPERION-1/)).toBeVisible()
+
+  // Plan a prograde burn via keyboard on the slider
+  const slider = page.locator('input[type="range"]').first()
+  await slider.focus()
+  for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowRight')
+  await expect(page.getByText(/cost 2[0-9]\.[0-9] m\/s/)).toBeVisible()
+
+  const execute = page.getByRole('button', { name: 'EXECUTE' })
+  await expect(execute).toBeEnabled()
+  await execute.click()
+  // Plan resets after execution
+  await expect(page.getByText(/cost 0\.0 m\/s/)).toBeVisible()
+})
