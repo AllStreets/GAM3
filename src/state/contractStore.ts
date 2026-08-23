@@ -3,6 +3,7 @@ import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 import { useAgencyStore } from '@/state/agencyStore'
 import { maxActiveContracts } from '@/lib/economy'
 import { groundDistanceKm, COMPLETION_RADIUS_KM } from '@/lib/intercept'
+import { simNow } from '@/lib/simTime'
 import type { Satellite } from '@/state/gameStore'
 
 const KEY = 'hyperion-contracts-v1'
@@ -34,6 +35,7 @@ interface ContractState extends Persisted {
   accept(id: string): boolean
   setTarget(id: string | null): void
   evaluate(satellites: Satellite[], simTime: number): { completed: Contract[]; failed: Contract[] }
+  hydrate(): void
   resetForTest(): void
 }
 
@@ -43,13 +45,26 @@ function save(get: () => ContractState) {
 }
 
 export const useContractStore = create<ContractState>((set, get) => ({
-  ...loadJSON<Persisted>(KEY, DEFAULTS),
+  ...DEFAULTS,
 
   setAvailable: (next) => {
-    const existing = new Set(get().contracts.map((c) => c.id))
-    const fresh = next.filter((c) => !existing.has(c.id)).map((c) => ({ ...c, status: 'available' as const }))
-    if (fresh.length === 0) return
-    set((s) => ({ contracts: [...s.contracts, ...fresh] }))
+    const existingMap = new Map(get().contracts.map((c) => [c.id, c]))
+    const fresh: Contract[] = []
+    let changed = false
+    for (const incoming of next) {
+      const existing = existingMap.get(incoming.id)
+      if (!existing) {
+        fresh.push({ ...incoming, status: 'available' as const })
+      } else if (existing.status === 'available') {
+        // Refresh deadline and reward for re-offered available contracts.
+        existingMap.set(incoming.id, { ...existing, deadline: incoming.deadline, reward: incoming.reward })
+        changed = true
+      }
+      // active/completed/failed: leave untouched
+    }
+    if (fresh.length === 0 && !changed) return
+    const updated = Array.from(existingMap.values())
+    set({ contracts: [...updated, ...fresh] })
     save(get)
   },
 
@@ -57,6 +72,7 @@ export const useContractStore = create<ContractState>((set, get) => ({
     const s = get()
     const c = s.contracts.find((x) => x.id === id)
     if (!c || c.status !== 'available') return false
+    if (c.deadline < simNow()) return false
     const activeCount = s.contracts.filter((x) => x.status === 'active').length
     if (activeCount >= maxActiveContracts(useAgencyStore.getState().reputation)) return false
     set((st) => ({
@@ -77,7 +93,13 @@ export const useContractStore = create<ContractState>((set, get) => ({
     const failed: Contract[] = []
     const agency = useAgencyStore.getState()
 
-    const contracts = get().contracts.map((c) => {
+    // Drop stale available contracts (expired offers — no reputation ding).
+    const afterExpiry = get().contracts.filter(
+      (c) => !(c.status === 'available' && c.deadline < simTime),
+    )
+    const staleDropped = afterExpiry.length !== get().contracts.length
+
+    const contracts = afterExpiry.map((c) => {
       if (c.status !== 'active') return c
       // Completion: any satellite's sub-point within the imaging radius right now.
       const hit = satellites.some(
@@ -99,12 +121,19 @@ export const useContractStore = create<ContractState>((set, get) => ({
       return c
     })
 
-    if (completed.length || failed.length) {
-      set({ contracts })
+    // Cap completed+failed history to most recent 10.
+    const nonHistory = contracts.filter((c) => c.status === 'available' || c.status === 'active')
+    const history = contracts.filter((c) => c.status === 'completed' || c.status === 'failed').slice(-10)
+    const bounded = [...nonHistory, ...history]
+
+    if (completed.length || failed.length || staleDropped) {
+      set({ contracts: bounded })
       save(get)
     }
     return { completed, failed }
   },
+
+  hydrate: () => set(loadJSON<Persisted>(KEY, DEFAULTS)),
 
   resetForTest: () => {
     clearKey(KEY)

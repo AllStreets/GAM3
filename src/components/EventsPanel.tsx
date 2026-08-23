@@ -30,6 +30,7 @@ export default function EventsPanel() {
   const [now, setNow] = useState<number | null>(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(Date.now())
     const clock = setInterval(() => setNow(Date.now()), 30_000)
     const stop = startEventPolling()

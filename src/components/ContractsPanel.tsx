@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 import { useContractStore } from '@/state/contractStore'
 import { useWorldStore } from '@/state/worldStore'
 import { useAgencyStore } from '@/state/agencyStore'
-import { simNow } from '@/lib/simTime'
+import { simNow, TIME_SCALE } from '@/lib/simTime'
 import { maxActiveContracts } from '@/lib/economy'
 import { audio } from '@/audio/AudioEngine'
 
 function countdown(deadline: number, now: number): string {
-  const s = Math.max(0, Math.round(deadline - now))
+  const s = Math.max(0, Math.round((deadline - now) / TIME_SCALE))
   const m = Math.floor(s / 60)
   return m > 0 ? `${m}m ${s % 60}s` : `${s}s`
 }
@@ -25,6 +25,7 @@ export default function ContractsPanel() {
 
   const [now, setNow] = useState<number | null>(null)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(simNow())
     const id = setInterval(() => setNow(simNow()), 1000)
     return () => clearInterval(id)
@@ -38,7 +39,7 @@ export default function ContractsPanel() {
   const cap = maxActiveContracts(reputation)
 
   return (
-    <aside className="pointer-events-auto fixed right-6 top-28 z-20 w-80 font-mono text-xs text-[var(--text)]">
+    <aside className="pointer-events-auto w-full font-mono text-xs text-[var(--text)]">
       <section className="rounded border border-white/10 bg-black/55 p-3 backdrop-blur">
         <h2 className="mb-2 flex items-center justify-between text-[10px] tracking-[0.35em] text-[var(--accent)]">
           <span>CONTRACTS</span>

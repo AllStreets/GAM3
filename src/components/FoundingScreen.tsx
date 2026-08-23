@@ -4,16 +4,19 @@ import { useState } from 'react'
 import { useAgencyStore } from '@/state/agencyStore'
 import { Emblem, EMBLEMS, COLORWAYS } from '@/components/Emblem'
 import { audio } from '@/audio/AudioEngine'
+import { useHydrated } from '@/components/StoreHydrator'
 
 const SUGGESTED = 'Aegis Orbital'
 
 export default function FoundingScreen() {
+  const hydrated = useHydrated()
   const founded = useAgencyStore((s) => s.founded)
   const found = useAgencyStore((s) => s.found)
   const [name, setName] = useState(SUGGESTED)
   const [emblemId, setEmblemId] = useState(EMBLEMS[0].id)
   const [color, setColor] = useState(COLORWAYS[0])
 
+  if (!hydrated) return null
   if (founded) return null
 
   return (

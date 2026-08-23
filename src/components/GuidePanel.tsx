@@ -12,7 +12,11 @@ export default function GuidePanel() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === '?' || e.key === 'h' || e.key === 'H') { setOpen((o) => !o); audio.uiTick() }
+      if (e.key === '?' || e.key === 'h' || e.key === 'H') {
+        const el = document.activeElement
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
+        setOpen((o) => !o); audio.uiTick()
+      }
       if (e.key === 'Escape') setOpen(false)
     }
     window.addEventListener('keydown', onKey)
@@ -56,7 +60,7 @@ export default function GuidePanel() {
                   <ellipse cx="60" cy="30" rx="52" ry="22" fill="none" stroke="#ffb86b" strokeWidth="1" strokeDasharray="3 3" />
                   <text x="30" y="56" fill="#ffb86b" fontSize="7">ghost orbit = preview</text>
                 </svg>
-                <p className="opacity-75">Drag <b>PROGRADE / NORMAL / RADIAL</b> Δv. The amber ghost shows your new orbit; the intercept readout turns green when you'll pass the target.</p>
+                <p className="opacity-75">Drag <b>PROGRADE / NORMAL / RADIAL</b> Δv. The amber ghost shows your new orbit; the intercept readout turns green when you&apos;ll pass the target.</p>
               </section>
 
               <section>

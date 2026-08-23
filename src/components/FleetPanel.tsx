@@ -46,6 +46,7 @@ export default function FleetPanel() {
   const [mounted, setMounted] = useState(false)
   const [, force] = useState(0)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true)
     const id = setInterval(() => force((n) => n + 1), 250)
     return () => clearInterval(id)
@@ -56,7 +57,7 @@ export default function FleetPanel() {
   const canExecute = !!selected && cost > 0 && cost * 1.25 <= (selected?.fuel ?? 0)
 
   return (
-    <aside className="pointer-events-auto fixed right-6 top-16 z-20 w-72 space-y-3 font-mono text-xs text-[var(--text)]">
+    <aside className="pointer-events-auto w-full space-y-3 font-mono text-xs text-[var(--text)]">
       <section className="rounded border border-white/10 bg-black/55 p-3 backdrop-blur">
         <h2 className="mb-2 text-[10px] tracking-[0.35em] text-[var(--accent)]">FLEET</h2>
         <ul className="space-y-2">

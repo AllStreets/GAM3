@@ -7,9 +7,9 @@ beforeEach(() => {
 })
 
 describe('gameStore', () => {
-  it('seeds two satellites with full fuel', () => {
+  it('seeds five satellites with full fuel', () => {
     const sats = useGameStore.getState().satellites
-    expect(sats).toHaveLength(2)
+    expect(sats).toHaveLength(5)
     expect(sats[0].name).toBe('HYPERION-1')
     expect(sats[0].fuel).toBe(sats[0].fuelCapacity)
   })

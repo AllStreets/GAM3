@@ -30,18 +30,11 @@ const FLEET_KEY = 'hyperion-fleet-v1'
 
 function seedFleet(): Satellite[] {
   return [
-    {
-      id: 'hyp-1',
-      name: 'HYPERION-1',
-      elements: { a: (6371 + 420) / 6371, e: 0.0012, i: deg(51.6), raan: 0.8, argp: 0.3, m0: 0, epoch: 0 },
-      fuel: 1800, fuelCapacity: 1800,
-    },
-    {
-      id: 'hyp-2',
-      name: 'HYPERION-2',
-      elements: { a: (6371 + 780) / 6371, e: 0.002, i: deg(97.5), raan: 2.4, argp: 1.1, m0: 2.0, epoch: 0 },
-      fuel: 1500, fuelCapacity: 1500,
-    },
+    { id: 'hyp-1', name: 'HYPERION-1', elements: { a: (6371 + 420) / 6371, e: 0.0012, i: deg(51.6), raan: 0.8, argp: 0.3, m0: 0, epoch: 0 }, fuel: 1800, fuelCapacity: 1800 },
+    { id: 'hyp-2', name: 'HYPERION-2', elements: { a: (6371 + 780) / 6371, e: 0.002, i: deg(97.5), raan: 2.4, argp: 1.1, m0: 2.0, epoch: 0 }, fuel: 1500, fuelCapacity: 1500 },
+    { id: 'hyp-3', name: 'HYPERION-3', elements: { a: (6371 + 550) / 6371, e: 0.001, i: deg(28), raan: 4.3, argp: 0.7, m0: 3.1, epoch: 0 }, fuel: 1500, fuelCapacity: 1500 },
+    { id: 'hyp-4', name: 'HYPERION-4', elements: { a: (6371 + 650) / 6371, e: 0.0015, i: deg(63), raan: 1.6, argp: 2.0, m0: 5.0, epoch: 0 }, fuel: 1500, fuelCapacity: 1500 },
+    { id: 'hyp-5', name: 'HYPERION-5', elements: { a: (6371 + 500) / 6371, e: 0.001, i: deg(82), raan: 5.5, argp: 1.4, m0: 1.7, epoch: 0 }, fuel: 1500, fuelCapacity: 1500 },
   ]
 }
 
@@ -94,11 +87,12 @@ interface GameState {
   abortBurn(): void
   refuelSatellite(id: string): boolean
   buySatellite(): boolean
+  hydrate(): void
   resetForTest(): void
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
-  satellites: loadJSON<{ satellites: Satellite[] }>(FLEET_KEY, { satellites: seedFleet() }).satellites,
+  satellites: seedFleet(),
   selectedId: null,
   burnPlan: { ...ZERO_PLAN },
   previewAt: 0,
@@ -195,6 +189,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     saveJSON(FLEET_KEY, { satellites: get().satellites })
     return true
   },
+
+  hydrate: () => set({ satellites: loadJSON<{ satellites: Satellite[] }>(FLEET_KEY, { satellites: seedFleet() }).satellites }),
 
   resetForTest: () => {
     clearKey(FLEET_KEY)

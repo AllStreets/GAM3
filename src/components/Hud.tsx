@@ -19,6 +19,7 @@ export default function Hud() {
   const [clock, setClock] = useState<string | null>(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setClock(utcNow())
     const id = setInterval(() => setClock(utcNow()), 1000)
     return () => clearInterval(id)
@@ -35,12 +36,14 @@ export default function Hud() {
           {clock ?? '--:--:-- UTC'}
         </p>
       </header>
-      <FleetPanel />
+      <div className="pointer-events-none fixed right-6 top-16 z-20 flex max-h-[calc(100dvh-6rem)] w-80 flex-col gap-3 overflow-y-auto">
+        <FleetPanel />
+        <ContractsPanel />
+      </div>
       <EventsPanel />
       <BurnOverlay />
       <BriefingPanel />
       <AgencyBar />
-      <ContractsPanel />
       <InterceptReadout />
       <GuidePanel />
       <FoundingScreen />

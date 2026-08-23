@@ -3,7 +3,8 @@ import { test, expect } from '@playwright/test'
 async function foundAgency(page: import('@playwright/test').Page) {
   await page.goto('/')
   const commission = page.getByRole('button', { name: 'COMMISSION AGENCY' })
-  // Fresh browser shows the founding screen; a persisted one won't.
+  // Wait briefly for store hydration (useEffect fires after mount); then click if visible.
+  await page.waitForTimeout(300)
   if (await commission.isVisible().catch(() => false)) {
     await commission.click()
   }
@@ -47,10 +48,8 @@ test('fleet panel selects a satellite and plans a burn', async ({ page }) => {
   await expect(page.getByText('HYPERION-1')).toBeVisible()
   await expect(page.getByText('HYPERION-2')).toBeVisible()
 
-  // Click near the top of the HYPERION-1 button to avoid the ContractsPanel
-  // header (top-28) which overlaps the lower half of the button after founding.
   const fleetAside = page.locator('aside').filter({ hasText: 'FLEET' })
-  await fleetAside.getByRole('button', { name: /HYPERION-1/ }).click({ position: { x: 80, y: 8 } })
+  await fleetAside.getByRole('button', { name: /HYPERION-1/ }).click()
   await expect(page.getByText(/BURN PLAN — HYPERION-1/)).toBeVisible()
 
   // Plan a prograde burn via keyboard on the slider
@@ -86,6 +85,15 @@ test('situation briefing arrives', async ({ page }) => {
   await foundAgency(page)
   // Briefing requires events first, then a server round trip (AI or fallback).
   await expect(page.getByText('SITUATION BRIEFING')).toBeVisible({ timeout: 45_000 })
+})
+
+test('reload after founding produces no console errors', async ({ page }) => {
+  const errors: string[] = []
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
+  await foundAgency(page)
+  await page.reload()
+  await page.waitForTimeout(2500)
+  expect(errors).toEqual([])
 })
 
 test('found agency, briefing yields contracts, accept one', async ({ page }) => {

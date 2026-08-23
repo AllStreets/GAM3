@@ -27,6 +27,7 @@ interface AgencyState extends Persisted {
   addFunding(n: number): void
   spendFunding(n: number): boolean
   addReputation(n: number): void
+  hydrate(): void
   resetForTest(): void
 }
 
@@ -38,7 +39,7 @@ function persistOf(s: AgencyState): Persisted {
 }
 
 export const useAgencyStore = create<AgencyState>((set, get) => ({
-  ...loadJSON<Persisted>(KEY, DEFAULTS),
+  ...DEFAULTS,
 
   found: (name, emblemId, colorway) => {
     set({ founded: true, name: name.trim() || 'Unnamed Agency', emblemId, colorway })
@@ -61,6 +62,8 @@ export const useAgencyStore = create<AgencyState>((set, get) => ({
     set((s) => ({ reputation: Math.max(0, s.reputation + n) }))
     saveJSON(KEY, persistOf(get()))
   },
+
+  hydrate: () => set(loadJSON<Persisted>(KEY, DEFAULTS)),
 
   resetForTest: () => {
     clearKey(KEY)

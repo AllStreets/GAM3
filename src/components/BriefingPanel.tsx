@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useWorldStore } from '@/state/worldStore'
 import { useGameStore } from '@/state/gameStore'
-import { propagate, ER_KM } from '@/lib/orbits'
+import { propagate, ER_KM, orbitalPeriod } from '@/lib/orbits'
 import { simNow } from '@/lib/simTime'
 import { profileSummary, recordSession } from '@/lib/profile'
 import { audio } from '@/audio/AudioEngine'
 import { useContractStore } from '@/state/contractStore'
 import { contractsFromBriefing, seedContracts } from '@/lib/contractsFromBriefing'
-import { orbitalPeriod } from '@/lib/orbits'
 
 interface Briefing {
   headline: string
