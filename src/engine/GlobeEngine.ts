@@ -37,6 +37,7 @@ export class GlobeEngine {
   private pointerDown: { x: number; y: number } | null = null
   private burnDirector = new BurnDirector()
   private lastElapsed = 0
+  private sunLight = new THREE.DirectionalLight(0xfff4e0, 2.2)
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
@@ -77,6 +78,9 @@ export class GlobeEngine {
     }).catch((err: unknown) => {
       console.error('GlobeEngine: failed to load earth textures', err)
     })
+
+    this.scene.add(this.sunLight)
+    this.scene.add(new THREE.AmbientLight(0x223347, 0.6))
 
     this.atmosphereMaterial = createAtmosphereMaterial()
     const atmosphere = new THREE.Mesh(
@@ -199,6 +203,7 @@ export class GlobeEngine {
     if (this.atmosphereMaterial) {
       ;(this.atmosphereMaterial.uniforms.sunDirection.value as THREE.Vector3).copy(dir)
     }
+    this.sunLight.position.copy(dir).multiplyScalar(10)
   }
 
   /** Ease the camera so it looks down on (lat, lon), preserving current distance. */
