@@ -3,6 +3,9 @@ import {
   applyDeltaV, MS_TO_ER, type OrbitalElements,
 } from '@/lib/orbits'
 import { recordBurn, recordAbort } from '@/lib/profile'
+import { refuelPrice, SATELLITE_PRICE } from '@/lib/economy'
+import { useAgencyStore } from '@/state/agencyStore'
+import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 
 export interface Satellite {
   id: string
@@ -23,19 +26,21 @@ const ZERO_PLAN: BurnPlan = { prograde: 0, normal: 0, radial: 0 }
 
 const deg = (d: number) => (d * Math.PI) / 180
 
+const FLEET_KEY = 'hyperion-fleet-v1'
+
 function seedFleet(): Satellite[] {
   return [
     {
       id: 'hyp-1',
       name: 'HYPERION-1',
       elements: { a: (6371 + 420) / 6371, e: 0.0012, i: deg(51.6), raan: 0.8, argp: 0.3, m0: 0, epoch: 0 },
-      fuel: 450, fuelCapacity: 450,
+      fuel: 1800, fuelCapacity: 1800,
     },
     {
       id: 'hyp-2',
       name: 'HYPERION-2',
       elements: { a: (6371 + 780) / 6371, e: 0.002, i: deg(97.5), raan: 2.4, argp: 1.1, m0: 2.0, epoch: 0 },
-      fuel: 380, fuelCapacity: 380,
+      fuel: 1500, fuelCapacity: 1500,
     },
   ]
 }
@@ -87,11 +92,13 @@ interface GameState {
   beginBurn(): boolean
   completeBurn(at: number, quality: number): boolean
   abortBurn(): void
+  refuelSatellite(id: string): boolean
+  buySatellite(): boolean
   resetForTest(): void
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
-  satellites: seedFleet(),
+  satellites: loadJSON<{ satellites: Satellite[] }>(FLEET_KEY, { satellites: seedFleet() }).satellites,
   selectedId: null,
   burnPlan: { ...ZERO_PLAN },
   previewAt: 0,
@@ -117,6 +124,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ),
       burnPlan: { ...ZERO_PLAN },
     })
+    saveJSON(FLEET_KEY, { satellites: get().satellites })
     return true
   },
 
@@ -150,12 +158,46 @@ export const useGameStore = create<GameState>((set, get) => ({
     recordBurn(burnSession.cost, quality)
     const live = get().burnLive
     live.needle = 0; live.progress = 0; live.quality = 1
+    saveJSON(FLEET_KEY, { satellites: get().satellites })
     return true
   },
 
   abortBurn: () => { recordAbort(); set({ burnSession: null }) },
 
+  refuelSatellite: (id) => {
+    const sat = get().satellites.find((s) => s.id === id)
+    if (!sat) return false
+    const missing = sat.fuelCapacity - sat.fuel
+    if (missing <= 0) return false
+    const price = refuelPrice(missing)
+    if (!useAgencyStore.getState().spendFunding(price)) return false
+    set((s) => ({
+      satellites: s.satellites.map((x) => (x.id === id ? { ...x, fuel: x.fuelCapacity } : x)),
+    }))
+    saveJSON(FLEET_KEY, { satellites: get().satellites })
+    return true
+  },
+
+  buySatellite: () => {
+    if (!useAgencyStore.getState().spendFunding(SATELLITE_PRICE)) return false
+    const n = get().satellites.length + 1
+    // Fresh LEO orbit; RAAN/argp offset per index so new coverage differs from existing planes.
+    const sat: Satellite = {
+      id: `hyp-${n}-${Math.round(get().previewAt ?? 0)}`,
+      name: `HYPERION-${n}`,
+      elements: {
+        a: (6371 + 500 + n * 40) / 6371, e: 0.001, i: deg(63 + n * 5),
+        raan: (0.6 * n) % (Math.PI * 2), argp: (0.4 * n) % (Math.PI * 2), m0: (1.1 * n) % (Math.PI * 2), epoch: 0,
+      },
+      fuel: 1500, fuelCapacity: 1500,
+    }
+    set((s) => ({ satellites: [...s.satellites, sat] }))
+    saveJSON(FLEET_KEY, { satellites: get().satellites })
+    return true
+  },
+
   resetForTest: () => {
+    clearKey(FLEET_KEY)
     const live = get().burnLive
     live.needle = 0; live.progress = 0; live.quality = 1
     set({ satellites: seedFleet(), selectedId: null, burnPlan: { ...ZERO_PLAN }, previewAt: 0, burnSession: null })

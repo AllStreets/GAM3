@@ -83,7 +83,7 @@ describe('burn session', () => {
   it('beginBurn refuses when worst-case cost exceeds fuel', () => {
     const st = useGameStore.getState()
     st.select(st.satellites[0].id)
-    st.setBurnPlan({ prograde: 400 }) // 400 * 1.25 = 500 > 450
+    st.setBurnPlan({ prograde: 1500 }) // 1500 * 1.25 = 1875 > 1800
     expect(useGameStore.getState().beginBurn()).toBe(false)
     expect(useGameStore.getState().burnSession).toBeNull()
   })
@@ -124,5 +124,53 @@ describe('burn session', () => {
     st.setBurnPlan({ prograde: 40 })
     expect(useGameStore.getState().beginBurn()).toBe(true)
     expect(useGameStore.getState().beginBurn()).toBe(false)
+  })
+})
+
+import { useAgencyStore } from './agencyStore'
+import { SATELLITE_PRICE } from '@/lib/economy'
+
+describe('fleet economy', () => {
+  beforeEach(() => {
+    useGameStore.getState().resetForTest()
+    useAgencyStore.getState().resetForTest()
+  })
+
+  it('seed fleet has the larger tanks', () => {
+    const [a, b] = useGameStore.getState().satellites
+    expect(a.fuelCapacity).toBe(1800)
+    expect(b.fuelCapacity).toBe(1500)
+  })
+
+  it('refuelSatellite refills to capacity and charges funding', () => {
+    const g = useGameStore.getState()
+    const id = g.satellites[0].id
+    // drain via a burn
+    g.select(id); g.setBurnPlan({ prograde: 100 }); useGameStore.getState().executeBurn(0)
+    const before = useAgencyStore.getState().funding
+    expect(useGameStore.getState().refuelSatellite(id)).toBe(true)
+    expect(useGameStore.getState().satellites[0].fuel).toBe(1800)
+    expect(useAgencyStore.getState().funding).toBeLessThan(before)
+  })
+
+  it('refuel fails with insufficient funding', () => {
+    const g = useGameStore.getState()
+    const id = g.satellites[0].id
+    g.select(id); g.setBurnPlan({ prograde: 100 }); useGameStore.getState().executeBurn(0)
+    useAgencyStore.setState({ funding: 0 })
+    expect(useGameStore.getState().refuelSatellite(id)).toBe(false)
+  })
+
+  it('buySatellite appends a bird and charges the price', () => {
+    useAgencyStore.setState({ funding: SATELLITE_PRICE + 10 })
+    const n = useGameStore.getState().satellites.length
+    expect(useGameStore.getState().buySatellite()).toBe(true)
+    expect(useGameStore.getState().satellites.length).toBe(n + 1)
+    expect(useAgencyStore.getState().funding).toBe(10)
+  })
+
+  it('buySatellite refuses when broke', () => {
+    useAgencyStore.setState({ funding: 0 })
+    expect(useGameStore.getState().buySatellite()).toBe(false)
   })
 })

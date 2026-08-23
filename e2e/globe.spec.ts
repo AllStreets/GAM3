@@ -55,8 +55,8 @@ test('fleet panel selects a satellite and plans a burn', async ({ page }) => {
   await page.waitForTimeout(3600)
   await page.keyboard.up('Space')
   await expect(page.getByText(/BURN IN PROGRESS/)).not.toBeVisible({ timeout: 5_000 })
-  // Fuel was spent (was 450/450).
-  await expect(page.getByText(/Δv 4[0-3][0-9]\/450 m\/s/)).toBeVisible()
+  // Fuel was spent (started at 1800/1800).
+  await expect(page.getByText(/Δv 1[0-7][0-9][0-9]\/1800 m\/s/)).toBeVisible()
 })
 
 test('events panel shows live world events and focuses one', async ({ page }) => {
