@@ -9,6 +9,7 @@ import { createAtmosphereMaterial } from '@/engine/atmosphereMaterial'
 import { EARTH_RADIUS, latLonToVector3, subsolarPoint } from '@/lib/geo'
 import { SatelliteLayer } from '@/engine/SatelliteLayer'
 import { EventLayer } from '@/engine/EventLayer'
+import { ContractLayer } from '@/engine/ContractLayer'
 import { simNow } from '@/lib/simTime'
 import { useGameStore } from '@/state/gameStore'
 import { useWorldStore } from '@/state/worldStore'
@@ -32,6 +33,7 @@ export class GlobeEngine {
   protected earth: THREE.Mesh
   private satLayer: SatelliteLayer
   private eventLayer: EventLayer
+  private contractLayer = new ContractLayer()
   private worldUnsub?: () => void
   private flight: { from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
   private pointerDown: { x: number; y: number } | null = null
@@ -113,6 +115,8 @@ export class GlobeEngine {
 
     this.eventLayer = new EventLayer()
     this.scene.add(this.eventLayer.group)
+
+    this.scene.add(this.contractLayer.group)
 
     this.worldUnsub = useWorldStore.subscribe((state, prev) => {
       if (state.focusedId && state.focusedId !== prev.focusedId) {
@@ -259,6 +263,7 @@ export class GlobeEngine {
     if (this.clouds) this.clouds.rotation.y = elapsedSeconds * 0.004
     this.satLayer.update(simNow())
     this.eventLayer.update(elapsedSeconds)
+    this.contractLayer.update(simNow())
     if (this.burnDirector.shake > 0.001) {
       this.camera.position.x += (Math.random() - 0.5) * this.burnDirector.shake * 0.012
       this.camera.position.y += (Math.random() - 0.5) * this.burnDirector.shake * 0.012
@@ -307,6 +312,7 @@ export class GlobeEngine {
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.worldUnsub?.()
     this.burnDirector.dispose()
+    this.contractLayer.dispose()
     this.eventLayer.dispose()
     this.satLayer.dispose()
     this.controls.dispose()
