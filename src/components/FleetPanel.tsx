@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useGameStore, burnCost, type Satellite } from '@/state/gameStore'
-import { propagate, ER_KM } from '@/lib/orbits'
+import { propagate, ER_KM, orbitalPeriod } from '@/lib/orbits'
 import { simNow } from '@/lib/simTime'
 import { audio } from '@/audio/AudioEngine'
 import { SATELLITE_PRICE, refuelPrice } from '@/lib/economy'
 import { useAgencyStore } from '@/state/agencyStore'
+import { useContractStore } from '@/state/contractStore'
+import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
 
 function telemetry(sat: Satellite) {
   const { position, velocity } = propagate(sat.elements, simNow())
@@ -41,6 +43,11 @@ export default function FleetPanel() {
   const refuelSatellite = useGameStore((s) => s.refuelSatellite)
   const buySatellite = useGameStore((s) => s.buySatellite)
   const funding = useAgencyStore((s) => s.funding)
+  const contracts = useContractStore((s) => s.contracts)
+  const targetId = useContractStore((s) => s.targetId)
+  const target =
+    contracts.find((c) => c.id === targetId && c.status === 'active') ??
+    contracts.find((c) => c.status === 'active') ?? null
 
   // Re-render telemetry at 4 Hz; mounted gates hydration-sensitive output
   const [mounted, setMounted] = useState(false)
@@ -61,35 +68,59 @@ export default function FleetPanel() {
       <section className="rounded border border-white/10 bg-black/55 p-3 backdrop-blur">
         <h2 className="mb-2 text-[10px] tracking-[0.35em] text-[var(--accent)]">FLEET</h2>
         <ul className="space-y-2">
-          {satellites.map((sat) => {
-            const t = telemetry(sat)
-            const isSel = sat.id === selectedId
-            return (
-              <li key={sat.id}>
-                <button
-                  onClick={() => { audio.chirp(); select(isSel ? null : sat.id) }}
-                  className={`w-full rounded border px-2 py-1.5 text-left transition ${
-                    isSel ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-white/10 hover:border-white/30'
-                  }`}
-                >
-                  <span className="flex items-center justify-between">
-                    <span className="font-semibold">{sat.name}</span>
-                    <span className="tabular-nums opacity-70">{mounted ? `${t.altKm.toFixed(0)} km` : '— km'}</span>
-                  </span>
-                  <span className="mt-0.5 flex items-center justify-between tabular-nums opacity-70">
-                    <span>{mounted ? `${t.speedKms.toFixed(2)} km/s` : '— km/s'}</span>
-                    <span>Δv {sat.fuel.toFixed(0)}/{sat.fuelCapacity} m/s</span>
-                  </span>
-                  <span className="mt-1 block h-1 w-full rounded bg-white/10">
-                    <span
-                      className="block h-1 rounded bg-[var(--accent)]"
-                      style={{ width: `${(sat.fuel / sat.fuelCapacity) * 100}%` }}
-                    />
-                  </span>
-                </button>
-              </li>
-            )
-          })}
+          {(() => {
+            const approaches = new Map<string, number>()
+            if (mounted && target) {
+              const now = simNow()
+              for (const sat of satellites) {
+                approaches.set(
+                  sat.id,
+                  closestApproach(sat.elements, { lat: target.lat, lon: target.lon }, now, 3 * orbitalPeriod(sat.elements.a)).closestKm,
+                )
+              }
+            }
+            const bestId =
+              approaches.size > 0
+                ? [...approaches.entries()].sort((a, b) => a[1] - b[1])[0][0]
+                : null
+            return satellites.map((sat) => {
+              const t = telemetry(sat)
+              const isSel = sat.id === selectedId
+              return (
+                <li key={sat.id}>
+                  <button
+                    onClick={() => { audio.chirp(); select(isSel ? null : sat.id) }}
+                    className={`w-full rounded border px-2 py-1.5 text-left transition ${
+                      isSel ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-white/10 hover:border-white/30'
+                    }`}
+                  >
+                    <span className="flex items-center justify-between">
+                      <span className="font-semibold">{sat.name}</span>
+                      <span className="tabular-nums opacity-70">{mounted ? `${t.altKm.toFixed(0)} km` : '— km'}</span>
+                    </span>
+                    <span className="mt-0.5 flex items-center justify-between tabular-nums opacity-70">
+                      <span>{mounted ? `${t.speedKms.toFixed(2)} km/s` : '— km/s'}</span>
+                      <span>Δv {sat.fuel.toFixed(0)}/{sat.fuelCapacity} m/s</span>
+                    </span>
+                    <span className="mt-1 block h-1 w-full rounded bg-white/10">
+                      <span
+                        className="block h-1 rounded bg-[var(--accent)]"
+                        style={{ width: `${(sat.fuel / sat.fuelCapacity) * 100}%` }}
+                      />
+                    </span>
+                    {target && approaches.has(sat.id) && (
+                      <span className="mt-0.5 flex items-center justify-between text-[10px]">
+                        <span className={approaches.get(sat.id)! <= COMPLETION_RADIUS_KM ? 'text-emerald-400' : 'text-amber-400/80'}>
+                          ◎ {Math.round(approaches.get(sat.id)!)} km to target
+                        </span>
+                        {sat.id === bestId && <span className="text-[var(--accent)]">◀ best</span>}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              )
+            })
+          })()}
         </ul>
       </section>
 
