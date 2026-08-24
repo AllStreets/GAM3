@@ -23,7 +23,7 @@ function DvField({ label, value, onChange }: { label: string; value: number; onC
     <label className="flex items-center justify-between gap-2 text-[11px]">
       <span className="w-20 opacity-70">{label}</span>
       <input
-        type="range" min={-400} max={400} step={1} value={value}
+        type="range" min={-800} max={800} step={1} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full accent-[var(--accent)]"
       />
