@@ -17,13 +17,13 @@ describe('shouldSpawnConjunction', () => {
     expect(shouldSpawnConjunction({ ...base, lastSpawnAt: 500 })).toBe(false)
   })
 
-  it('returns false when roll is at or above per-fleet chance (0.15)', () => {
-    expect(shouldSpawnConjunction({ ...base, roll: 0.15 })).toBe(false)
+  it('returns false when roll is at or above per-fleet chance (0.08)', () => {
+    expect(shouldSpawnConjunction({ ...base, roll: 0.08 })).toBe(false)
     expect(shouldSpawnConjunction({ ...base, roll: 0.99 })).toBe(false)
   })
 
   it('returns true when roll is just below the threshold', () => {
-    expect(shouldSpawnConjunction({ ...base, roll: 0.1499 })).toBe(true)
+    expect(shouldSpawnConjunction({ ...base, roll: 0.0799 })).toBe(true)
   })
 
   it('returns false when fleetSize is 0', () => {

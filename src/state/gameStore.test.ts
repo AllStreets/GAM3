@@ -211,27 +211,27 @@ describe('emergency conjunctions', () => {
 
   it('maybeSpawnConjunction sets emergency when conditions are met', () => {
     const g = useGameStore.getState()
-    // now=1000, lastConjunctionAt=0, minGapSec=600 met, roll=0.05 < 0.15 → spawn
-    g.maybeSpawnConjunction(1000, 0.05)
+    // now=5000, lastConjunctionAt=0, minGapSec=3600 met, roll=0.05 < 0.08 → spawn
+    g.maybeSpawnConjunction(5000, 0.05)
     expect(useGameStore.getState().emergency).not.toBeNull()
-    expect(useGameStore.getState().lastConjunctionAt).toBe(1000)
+    expect(useGameStore.getState().lastConjunctionAt).toBe(5000)
   })
 
   it('maybeSpawnConjunction does not spawn when gap is not met', () => {
     const g = useGameStore.getState()
-    g.maybeSpawnConjunction(100, 0.05) // gap too small (only 100 since lastConjunctionAt=0, minGapSec=600)
+    g.maybeSpawnConjunction(100, 0.05) // gap too small (only 100 since lastConjunctionAt=0, minGapSec=3600)
     expect(useGameStore.getState().emergency).toBeNull()
   })
 
-  it('maybeSpawnConjunction does not spawn when roll >= 0.15', () => {
+  it('maybeSpawnConjunction does not spawn when roll >= 0.08', () => {
     const g = useGameStore.getState()
-    g.maybeSpawnConjunction(1000, 0.20) // roll too high
+    g.maybeSpawnConjunction(5000, 0.20) // gap met, but roll too high
     expect(useGameStore.getState().emergency).toBeNull()
   })
 
   it('resolveEmergencyByBurn clears emergency when dvSpent >= requiredDv', () => {
     const g = useGameStore.getState()
-    g.maybeSpawnConjunction(1000, 0.05)
+    g.maybeSpawnConjunction(5000, 0.05)
     const { emergency } = useGameStore.getState()
     expect(emergency).not.toBeNull()
     g.resolveEmergencyByBurn(emergency!.satId, emergency!.requiredDv)
@@ -240,7 +240,7 @@ describe('emergency conjunctions', () => {
 
   it('resolveEmergencyByBurn does NOT clear emergency when dvSpent < requiredDv', () => {
     const g = useGameStore.getState()
-    g.maybeSpawnConjunction(1000, 0.05)
+    g.maybeSpawnConjunction(5000, 0.05)
     const { emergency } = useGameStore.getState()
     g.resolveEmergencyByBurn(emergency!.satId, emergency!.requiredDv - 1)
     expect(useGameStore.getState().emergency).not.toBeNull()
@@ -249,7 +249,7 @@ describe('emergency conjunctions', () => {
   it('tickEmergency loses the satellite after deadline passes', () => {
     const g = useGameStore.getState()
     const satCount = useGameStore.getState().satellites.length
-    g.maybeSpawnConjunction(1000, 0.05)
+    g.maybeSpawnConjunction(5000, 0.05)
     const { emergency } = useGameStore.getState()
     // Tick past the deadline
     g.tickEmergency(emergency!.deadline + 1)
@@ -267,7 +267,7 @@ describe('emergency conjunctions', () => {
     // Force the state to have only 1 satellite
     useGameStore.setState({ satellites: [satellites[0]] })
     // Spawn conjunction on the only satellite
-    g.maybeSpawnConjunction(1000, 0.05)
+    g.maybeSpawnConjunction(5000, 0.05)
     const { emergency } = useGameStore.getState()
     expect(emergency).not.toBeNull()
     // Tick past deadline — should lose the sat but grant a replacement
@@ -279,7 +279,7 @@ describe('emergency conjunctions', () => {
 
   it('payEvasion deducts fuel from the satellite and clears emergency', () => {
     const g = useGameStore.getState()
-    g.maybeSpawnConjunction(1000, 0.05)
+    g.maybeSpawnConjunction(5000, 0.05)
     const { emergency } = useGameStore.getState()
     const sat = useGameStore.getState().satellites.find((s) => s.id === emergency!.satId)!
     const fuelBefore = sat.fuel
@@ -292,7 +292,7 @@ describe('emergency conjunctions', () => {
 
   it('payEvasion returns false when satellite has insufficient fuel', () => {
     const g = useGameStore.getState()
-    g.maybeSpawnConjunction(1000, 0.05)
+    g.maybeSpawnConjunction(5000, 0.05)
     const { emergency } = useGameStore.getState()
     // Set fuel to zero
     useGameStore.setState({

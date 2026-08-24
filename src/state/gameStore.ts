@@ -313,7 +313,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!shouldSpawnConjunction({
       now,
       lastSpawnAt: lastConjunctionAt,
-      minGapSec: 600,
+      minGapSec: 3600,
       fleetSize: satellites.length,
       roll,
     })) return
@@ -374,7 +374,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Never-ruin: grant a free provisional replacement.
       const n = satellites.length + 1
       const provisional: Satellite = {
-        id: `hyp-prov-${Math.round(Date.now() / 1000)}`,
+        id: `hyp-prov-${Math.round(get().previewAt ?? 0)}`,
         name: `HYPERION-${n}`,
         elements: {
           a: (6371 + 500) / 6371, e: 0.001, i: deg(51.6),

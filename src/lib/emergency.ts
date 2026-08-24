@@ -10,8 +10,9 @@ export interface Conjunction {
   requiredDv: number
 }
 
-/** Chance per fleet member that a conjunction spawns on any given check. */
-const PER_FLEET_CHANCE = 0.15
+/** Chance per fleet member that a conjunction spawns on any given check.
+ *  Kept low so emergencies stay rare, memorable gut-punches rather than spammy. */
+const PER_FLEET_CHANCE = 0.08
 
 /**
  * Returns true when all three conditions are met:
