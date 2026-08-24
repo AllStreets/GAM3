@@ -10,6 +10,7 @@ import { maxActiveContracts } from '@/lib/economy'
 import { CAPABILITY_LABEL } from '@/lib/satelliteMeta'
 import { audio } from '@/audio/AudioEngine'
 import type { Archetype } from '@/lib/archetype'
+import { Chip } from '@/components/ui/Chip'
 
 const ARCHETYPE_STYLE: Record<Archetype, { label: string; color: string }> = {
   relief:   { label: 'RELIEF',   color: '#4ade80' },
@@ -68,13 +69,8 @@ export default function ContractsPanel() {
                 <li key={c.id} className="rounded border border-white/10 p-2">
                   <p className="mb-1 truncate font-semibold">{c.title}</p>
                   <p className="mb-1 flex items-center gap-1.5">
-                    <span
-                      className="rounded px-1 py-0.5 text-[9px] font-bold tracking-widest"
-                      style={{ color: archStyle.color, border: `1px solid ${archStyle.color}40`, background: `${archStyle.color}14` }}
-                    >
-                      {archStyle.label}
-                    </span>
-                    <span className="rounded border border-white/15 px-1 py-0.5 text-[9px] tracking-widest opacity-60">{capLabel}</span>
+                    <Chip color={archStyle.color}>{archStyle.label}</Chip>
+                    <Chip className="opacity-60">{capLabel}</Chip>
                     {isMatch && (
                       <span className="text-[9px] text-yellow-400 opacity-80">★ match</span>
                     )}
