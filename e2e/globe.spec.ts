@@ -114,3 +114,66 @@ test('events panel is collapsed by default with a show-all toggle', async ({ pag
   await foundAgency(page)
   await expect(page.getByRole('button', { name: /Show all \d+ events/ })).toBeVisible({ timeout: 20_000 })
 })
+
+test('walkthrough appears after founding and can be skipped', async ({ page }) => {
+  // Clear persisted onboarding flag so the walkthrough is guaranteed to show
+  await page.goto('/')
+  await page.evaluate(() => localStorage.removeItem('hyperion-onboarded-v1'))
+
+  await foundAgency(page)
+
+  // Walkthrough callout should appear
+  await expect(page.getByTestId('walkthrough')).toBeVisible({ timeout: 5_000 })
+  // Step counter starts at 1
+  await expect(page.getByText(/STEP 1 \//)).toBeVisible()
+
+  // Skip should dismiss the walkthrough
+  await page.getByTestId('walkthrough-skip').click()
+  await expect(page.getByTestId('walkthrough')).not.toBeVisible({ timeout: 3_000 })
+})
+
+test('walkthrough can be advanced through all steps with Next', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.removeItem('hyperion-onboarded-v1'))
+
+  await foundAgency(page)
+
+  await expect(page.getByTestId('walkthrough')).toBeVisible({ timeout: 5_000 })
+
+  // Advance through all steps — the last button is DONE
+  for (let i = 0; i < 3; i++) {
+    await page.getByTestId('walkthrough-next').click()
+  }
+  // Last step: button text should be DONE
+  await expect(page.getByTestId('walkthrough-next')).toHaveText('DONE')
+  await page.getByTestId('walkthrough-next').click()
+
+  // Walkthrough gone
+  await expect(page.getByTestId('walkthrough')).not.toBeVisible({ timeout: 3_000 })
+})
+
+test('pressing ? opens the guide panel', async ({ page }) => {
+  await foundAgency(page)
+
+  // Guide panel should not be visible initially
+  await expect(page.getByTestId('guide-panel')).not.toBeVisible()
+
+  // Press ? to open
+  await page.keyboard.press('?')
+  await expect(page.getByTestId('guide-panel')).toBeVisible({ timeout: 3_000 })
+
+  // Press Escape to close
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('guide-panel')).not.toBeVisible({ timeout: 3_000 })
+})
+
+test('guide button click opens and closes the guide panel', async ({ page }) => {
+  await foundAgency(page)
+
+  await page.getByTestId('guide-button').click()
+  await expect(page.getByTestId('guide-panel')).toBeVisible({ timeout: 3_000 })
+
+  // Click the close button inside the panel
+  await page.getByRole('button', { name: 'close guide' }).click()
+  await expect(page.getByTestId('guide-panel')).not.toBeVisible({ timeout: 3_000 })
+})

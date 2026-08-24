@@ -11,6 +11,7 @@ import ContractsPanel from '@/components/ContractsPanel'
 import InterceptReadout from '@/components/InterceptReadout'
 import GuidePanel from '@/components/GuidePanel'
 import GuidanceHint from '@/components/GuidanceHint'
+import Walkthrough from '@/components/Walkthrough'
 import CompletionCinematic from '@/components/CompletionCinematic'
 import { ConjunctionAlert, LossBeat } from '@/components/EmergencyAlert'
 import ColdOpenScreen from '@/components/ColdOpenScreen'
@@ -52,6 +53,7 @@ export default function Hud() {
       <GuidanceHint />
       <InterceptReadout />
       <GuidePanel />
+      <Walkthrough />
       <FoundingScreen />
       <ColdOpenScreen />
       <CompletionCinematic />
