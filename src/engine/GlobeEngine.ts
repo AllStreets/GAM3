@@ -19,6 +19,12 @@ import { BurnDirector } from '@/engine/BurnDirector'
 import { propagate, sceneFromEci } from '@/lib/orbits'
 import { audio } from '@/audio/AudioEngine'
 
+/** Module-level reference so React components can call captureFrame without touching Three objects. */
+let _activeEngine: GlobeEngine | null = null
+export function getActiveEngine(): GlobeEngine | null {
+  return _activeEngine
+}
+
 export class GlobeEngine {
   private renderer: THREE.WebGLRenderer
   private scene = new THREE.Scene()
@@ -49,6 +55,7 @@ export class GlobeEngine {
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
+    _activeEngine = this
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000)
@@ -353,7 +360,20 @@ export class GlobeEngine {
     return this.renderer
   }
 
+  /**
+   * Capture the current rendered frame as a PNG data URL.
+   * Since we already create the renderer with `preserveDrawingBuffer: true`,
+   * we force a synchronous render and read back immediately.
+   */
+  captureFrame(): string {
+    this.controls.update()
+    if (this.composer) this.composer.render()
+    else this.renderer.render(this.scene, this.camera)
+    return this.renderer.domElement.toDataURL('image/png')
+  }
+
   dispose() {
+    if (_activeEngine === this) _activeEngine = null
     this.disposedFlag = true
     cancelAnimationFrame(this.frameHandle)
     this.resizeObserver.disconnect()

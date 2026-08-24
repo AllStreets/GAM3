@@ -15,6 +15,7 @@ import Walkthrough from '@/components/Walkthrough'
 import CompletionCinematic from '@/components/CompletionCinematic'
 import { ConjunctionAlert, LossBeat } from '@/components/EmergencyAlert'
 import ColdOpenScreen from '@/components/ColdOpenScreen'
+import PostcardButton from '@/components/PostcardButton'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -59,6 +60,10 @@ export default function Hud() {
       <CompletionCinematic />
       <ConjunctionAlert />
       <LossBeat />
+      {/* Postcard capture — bottom-right corner, above AgencyBar */}
+      <div className="pointer-events-none fixed bottom-6 right-6 z-20 flex flex-col items-end gap-2">
+        <PostcardButton />
+      </div>
     </div>
   )
 }
