@@ -25,7 +25,7 @@ export function contractReward(severity: number): { funding: number; reputation:
   return { funding: 120 + Math.round(s * 380), reputation: 8 + Math.round(s * 22) }
 }
 
-/** Deadline three orbital periods after now (enough for a phasing/steering intercept). */
+/** Deadline five orbital periods after now — enough headroom to plan and fly an intercept without time pressure dominating. */
 export function contractDeadline(simNow: number, periodSec: number): number {
-  return simNow + 3 * periodSec
+  return simNow + 5 * periodSec
 }

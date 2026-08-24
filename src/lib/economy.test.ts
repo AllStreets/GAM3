@@ -26,7 +26,7 @@ describe('economy', () => {
     expect(contractReward(1).funding).toBeGreaterThan(contractReward(0).funding)
     expect(contractReward(0).funding).toBe(120)
   })
-  it('contractDeadline is three periods out', () => {
-    expect(contractDeadline(1000, 5400)).toBe(1000 + 3 * 5400)
+  it('contractDeadline is five periods out', () => {
+    expect(contractDeadline(1000, 5400)).toBe(1000 + 5 * 5400)
   })
 })

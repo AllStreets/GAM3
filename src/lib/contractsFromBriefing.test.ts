@@ -16,7 +16,7 @@ describe('contractsFromBriefing', () => {
     expect(cs).toHaveLength(1)
     expect(cs[0].eventId).toBe('a')
     expect(cs[0].lat).toBe(10)
-    expect(cs[0].deadline).toBe(1000 + 3 * 5400)
+    expect(cs[0].deadline).toBe(1000 + 5 * 5400)
     expect(cs[0].reward.funding).toBeGreaterThan(0)
     expect(cs[0].status).toBe('available')
   })

@@ -28,6 +28,7 @@ export default function EventsPanel() {
   const sourcesOk = useWorldStore((s) => s.sourcesOk)
   const focusEvent = useWorldStore((s) => s.focusEvent)
   const [now, setNow] = useState<number | null>(null)
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -53,8 +54,9 @@ export default function EventsPanel() {
         {events.length === 0 ? (
           <p className="py-4 text-center opacity-50">listening to the world…</p>
         ) : (
-          <ul className="max-h-[46vh] space-y-1 overflow-y-auto pr-1">
-            {events.map((ev) => {
+          <>
+            <ul className="max-h-[38vh] space-y-1 overflow-y-auto pr-1">
+              {(expanded ? events : events.slice(0, 8)).map((ev) => {
               const g = GLYPH[ev.kind]
               const focused = ev.id === focusedId
               return (
@@ -76,8 +78,17 @@ export default function EventsPanel() {
                   </button>
                 </li>
               )
-            })}
-          </ul>
+              })}
+            </ul>
+            {events.length > 8 && (
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-1 w-full rounded border border-white/10 py-1 text-[10px] opacity-70 transition hover:opacity-100"
+              >
+                {expanded ? 'Show less' : `Show all ${events.length} events`}
+              </button>
+            )}
+          </>
         )}
       </section>
     </aside>
