@@ -13,6 +13,7 @@ import GuidePanel from '@/components/GuidePanel'
 import GuidanceHint from '@/components/GuidanceHint'
 import CompletionCinematic from '@/components/CompletionCinematic'
 import { ConjunctionAlert, LossBeat } from '@/components/EmergencyAlert'
+import ColdOpenScreen from '@/components/ColdOpenScreen'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -52,6 +53,7 @@ export default function Hud() {
       <InterceptReadout />
       <GuidePanel />
       <FoundingScreen />
+      <ColdOpenScreen />
       <CompletionCinematic />
       <ConjunctionAlert />
       <LossBeat />
