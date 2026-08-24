@@ -44,6 +44,7 @@ export class GlobeEngine {
   private completionFx = new CompletionFx()
   private lastSeenCompletionId: string | null = null
   private lastElapsed = 0
+  private lastEmergencyTick = -1e9
   private sunLight = new THREE.DirectionalLight(0xfff4e0, 2.2)
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -293,6 +294,19 @@ export class GlobeEngine {
       }
     }
     // --- End completion chase-lock ---
+
+    // ── Emergency spawn + expiry (throttled once per sim-minute = 60 sim-sec) ──
+    const simTime = simNow()
+    if (simTime - this.lastEmergencyTick > 60) {
+      this.lastEmergencyTick = simTime
+      // Deterministic roll: fractional part of a slowly-varying function of sim time.
+      // Varies continuously but never uses Math.random, so no state-dependent randomness.
+      const roll = (Math.sin(simTime * 0.1) * 0.5 + 0.5)
+      const gs = useGameStore.getState()
+      gs.maybeSpawnConjunction(simTime, roll)
+      gs.tickEmergency(simTime)
+    }
+    // ── End emergency tick ──
 
     this.updateSun()
     if (this.clouds) this.clouds.rotation.y = elapsedSeconds * 0.004

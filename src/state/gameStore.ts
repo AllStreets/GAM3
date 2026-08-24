@@ -8,11 +8,15 @@ import { useAgencyStore } from '@/state/agencyStore'
 import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 import {
   type Capability, type ServiceRecord,
-  seedCapability, fillGapCapability, freshRecord,
+  seedCapability, fillGapCapability, freshRecord, simDaysInOrbit,
 } from '@/lib/satelliteMeta'
 import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
 import { scoreManeuver, detectTrickShot, type ManeuverScore } from '@/lib/maneuverScore'
 import { useContractStore } from '@/state/contractStore'
+import {
+  type Conjunction, shouldSpawnConjunction, makeConjunction,
+  isResolvedByBurn, isExpired,
+} from '@/lib/emergency'
 
 export interface Satellite {
   id: string
@@ -91,6 +95,12 @@ interface GameState {
   lastTrickShot: { count: number } | null
   /** Operational-tempo streak — consecutive contract completions; reset on failure. Not persisted. */
   streak: number
+  /** Active debris-conjunction emergency, or null. NOT persisted (transient per session). */
+  emergency: Conjunction | null
+  /** Last sim-time a conjunction was spawned. Persisted so gaps survive reloads. */
+  lastConjunctionAt: number
+  /** Transient: set when a satellite is permanently lost; cleared by clearLoss(). */
+  lastLoss: { name: string } | null
   select(id: string | null): void
   setBurnPlan(p: Partial<BurnPlan>): void
   resetBurnPlan(): void
@@ -105,6 +115,18 @@ interface GameState {
   recordContractPass(satId: string, note?: string): void
   bumpStreak(): void
   resetStreak(): void
+  /** Check and possibly spawn a conjunction; supply a deterministic roll ∈ [0,1). */
+  maybeSpawnConjunction(now: number, roll: number): void
+  /** Clear the emergency when the burned sat has spent enough Δv. */
+  resolveEmergencyByBurn(satId: string, dvSpent: number): void
+  /** Pay fuel cost to dodge without flying; returns false if insufficient fuel. */
+  payEvasion(): boolean
+  /** Permanently remove a satellite; grant a free provisional replacement if fleet would reach 0. */
+  loseSatellite(satId: string): void
+  /** Dismiss the loss-beat overlay. */
+  clearLoss(): void
+  /** Called every engine tick: if emergency is expired, lose the satellite. */
+  tickEmergency(now: number): void
   resetForTest(): void
 }
 
@@ -118,6 +140,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastManeuver: null,
   lastTrickShot: null,
   streak: 0,
+  emergency: null,
+  lastConjunctionAt: 0,
+  lastLoss: null,
 
   select: (id) => set({ selectedId: id, burnPlan: { ...ZERO_PLAN } }),
 
@@ -138,7 +163,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ),
       burnPlan: { ...ZERO_PLAN },
     })
-    saveJSON(FLEET_KEY, { satellites: get().satellites })
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
     return true
   },
 
@@ -200,7 +225,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     recordBurn(burnSession.cost, quality)
     const live = get().burnLive
     live.needle = 0; live.progress = 0; live.quality = 1
-    saveJSON(FLEET_KEY, { satellites: get().satellites })
+
+    // If there's an active emergency on this satellite, resolve it if spent >= requiredDv.
+    get().resolveEmergencyByBurn(burnSession.satId, spent)
+
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
     return true
   },
 
@@ -219,7 +248,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((s) => ({
       satellites: s.satellites.map((x) => (x.id === id ? { ...x, fuel: x.fuelCapacity } : x)),
     }))
-    saveJSON(FLEET_KEY, { satellites: get().satellites })
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
     return true
   },
 
@@ -239,18 +268,21 @@ export const useGameStore = create<GameState>((set, get) => ({
       record: freshRecord(get().previewAt ?? 0),
     }
     set((s) => ({ satellites: [...s.satellites, sat] }))
-    saveJSON(FLEET_KEY, { satellites: get().satellites })
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
     return true
   },
 
   hydrate: () => {
-    const loaded = loadJSON<{ satellites: Satellite[] }>(FLEET_KEY, { satellites: seedFleet() }).satellites
-    const backfilled = loaded.map((s, index) => ({
+    const raw = loadJSON<{ satellites: Satellite[]; lastConjunctionAt?: number }>(
+      FLEET_KEY,
+      { satellites: seedFleet(), lastConjunctionAt: 0 },
+    )
+    const backfilled = raw.satellites.map((s, index) => ({
       ...s,
       capability: s.capability ?? seedCapability(index),
       record: s.record ?? freshRecord(0),
     }))
-    set({ satellites: backfilled })
+    set({ satellites: backfilled, lastConjunctionAt: raw.lastConjunctionAt ?? 0 })
   },
 
   recordContractPass: (satId, note) => {
@@ -270,13 +302,123 @@ export const useGameStore = create<GameState>((set, get) => ({
           : sat,
       ),
     }))
-    saveJSON(FLEET_KEY, { satellites: get().satellites })
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
   },
+
+  // ── Emergency actions ──────────────────────────────────────────────────────
+
+  maybeSpawnConjunction: (now, roll) => {
+    const { emergency, lastConjunctionAt, satellites } = get()
+    if (emergency) return // already an active emergency
+    if (!shouldSpawnConjunction({
+      now,
+      lastSpawnAt: lastConjunctionAt,
+      minGapSec: 600,
+      fleetSize: satellites.length,
+      roll,
+    })) return
+
+    // Pick satellite deterministically from roll.
+    const idx = Math.min(
+      Math.floor(roll * satellites.length),
+      satellites.length - 1,
+    )
+    const sat = satellites[idx]
+    if (!sat) return
+
+    const conjunction = makeConjunction(sat.id, now)
+    set({ emergency: conjunction, lastConjunctionAt: now })
+    // Lazy import to avoid circular dependency in tests.
+    if (typeof window !== 'undefined') {
+      // audio is browser-only; safe to import at runtime in game context.
+      import('@/audio/AudioEngine').then(({ audio }) => audio.alert()).catch(() => undefined)
+    }
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: now })
+  },
+
+  resolveEmergencyByBurn: (satId, dvSpent) => {
+    const { emergency } = get()
+    if (!emergency) return
+    if (emergency.satId !== satId) return
+    if (!isResolvedByBurn(emergency, dvSpent)) return
+    const now = get().previewAt ?? 0
+    const sat = get().satellites.find((s) => s.id === satId)
+    const days = sat ? simDaysInOrbit(sat.record.commissionedAt, now) : 0
+    get().recordContractPass(satId, `Evaded conjunction · SD ${days}`)
+    set({ emergency: null })
+  },
+
+  payEvasion: () => {
+    const { emergency, satellites } = get()
+    if (!emergency) return false
+    const sat = satellites.find((s) => s.id === emergency.satId)
+    if (!sat) return false
+    if (sat.fuel < emergency.requiredDv) return false // insufficient fuel
+    set((s) => ({
+      satellites: s.satellites.map((x) =>
+        x.id === emergency.satId ? { ...x, fuel: x.fuel - emergency.requiredDv } : x,
+      ),
+      emergency: null,
+    }))
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
+    return true
+  },
+
+  loseSatellite: (satId) => {
+    const { satellites } = get()
+    const sat = satellites.find((s) => s.id === satId)
+    if (!sat) return
+    const remaining = satellites.filter((s) => s.id !== satId)
+
+    if (remaining.length === 0) {
+      // Never-ruin: grant a free provisional replacement.
+      const n = satellites.length + 1
+      const provisional: Satellite = {
+        id: `hyp-prov-${Math.round(Date.now() / 1000)}`,
+        name: `HYPERION-${n}`,
+        elements: {
+          a: (6371 + 500) / 6371, e: 0.001, i: deg(51.6),
+          raan: 0.8, argp: 0.3, m0: 0, epoch: 0,
+        },
+        fuel: 1500, fuelCapacity: 1500,
+        capability: seedCapability(0),
+        record: freshRecord(get().previewAt ?? 0),
+      }
+      set({ satellites: [provisional], emergency: null, lastLoss: { name: sat.name } })
+    } else {
+      set({ satellites: remaining, emergency: null, lastLoss: { name: sat.name } })
+    }
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
+  },
+
+  clearLoss: () => set({ lastLoss: null }),
+
+  tickEmergency: (now) => {
+    const { emergency } = get()
+    if (!emergency) return
+    if (isExpired(emergency, now)) {
+      get().loseSatellite(emergency.satId)
+    }
+  },
+
+  // ── End emergency actions ──────────────────────────────────────────────────
 
   resetForTest: () => {
     clearKey(FLEET_KEY)
     const live = get().burnLive
     live.needle = 0; live.progress = 0; live.quality = 1
-    set({ satellites: seedFleet(), selectedId: null, burnPlan: { ...ZERO_PLAN }, previewAt: 0, burnSession: null, lastManeuver: null, lastTrickShot: null, streak: 0 })
+    set({
+      satellites: seedFleet(),
+      selectedId: null,
+      burnPlan: { ...ZERO_PLAN },
+      previewAt: 0,
+      burnSession: null,
+      lastManeuver: null,
+      lastTrickShot: null,
+      streak: 0,
+      emergency: null,
+      lastConjunctionAt: 0,
+      lastLoss: null,
+    })
   },
 }))

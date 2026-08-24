@@ -204,6 +204,123 @@ describe('fleet economy', () => {
   })
 })
 
+describe('emergency conjunctions', () => {
+  beforeEach(() => {
+    useGameStore.getState().resetForTest()
+  })
+
+  it('maybeSpawnConjunction sets emergency when conditions are met', () => {
+    const g = useGameStore.getState()
+    // now=1000, lastConjunctionAt=0, minGapSec=600 met, roll=0.05 < 0.15 → spawn
+    g.maybeSpawnConjunction(1000, 0.05)
+    expect(useGameStore.getState().emergency).not.toBeNull()
+    expect(useGameStore.getState().lastConjunctionAt).toBe(1000)
+  })
+
+  it('maybeSpawnConjunction does not spawn when gap is not met', () => {
+    const g = useGameStore.getState()
+    g.maybeSpawnConjunction(100, 0.05) // gap too small (only 100 since lastConjunctionAt=0, minGapSec=600)
+    expect(useGameStore.getState().emergency).toBeNull()
+  })
+
+  it('maybeSpawnConjunction does not spawn when roll >= 0.15', () => {
+    const g = useGameStore.getState()
+    g.maybeSpawnConjunction(1000, 0.20) // roll too high
+    expect(useGameStore.getState().emergency).toBeNull()
+  })
+
+  it('resolveEmergencyByBurn clears emergency when dvSpent >= requiredDv', () => {
+    const g = useGameStore.getState()
+    g.maybeSpawnConjunction(1000, 0.05)
+    const { emergency } = useGameStore.getState()
+    expect(emergency).not.toBeNull()
+    g.resolveEmergencyByBurn(emergency!.satId, emergency!.requiredDv)
+    expect(useGameStore.getState().emergency).toBeNull()
+  })
+
+  it('resolveEmergencyByBurn does NOT clear emergency when dvSpent < requiredDv', () => {
+    const g = useGameStore.getState()
+    g.maybeSpawnConjunction(1000, 0.05)
+    const { emergency } = useGameStore.getState()
+    g.resolveEmergencyByBurn(emergency!.satId, emergency!.requiredDv - 1)
+    expect(useGameStore.getState().emergency).not.toBeNull()
+  })
+
+  it('tickEmergency loses the satellite after deadline passes', () => {
+    const g = useGameStore.getState()
+    const satCount = useGameStore.getState().satellites.length
+    g.maybeSpawnConjunction(1000, 0.05)
+    const { emergency } = useGameStore.getState()
+    // Tick past the deadline
+    g.tickEmergency(emergency!.deadline + 1)
+    const after = useGameStore.getState()
+    expect(after.emergency).toBeNull()
+    expect(after.satellites.length).toBeLessThan(satCount)
+    expect(after.lastLoss).not.toBeNull()
+    expect(after.lastLoss!.name).toBeTruthy()
+  })
+
+  it('losing the last satellite grants a provisional replacement (length >= 1)', () => {
+    const g = useGameStore.getState()
+    // Remove all but one satellite first
+    const { satellites } = useGameStore.getState()
+    // Force the state to have only 1 satellite
+    useGameStore.setState({ satellites: [satellites[0]] })
+    // Spawn conjunction on the only satellite
+    g.maybeSpawnConjunction(1000, 0.05)
+    const { emergency } = useGameStore.getState()
+    expect(emergency).not.toBeNull()
+    // Tick past deadline — should lose the sat but grant a replacement
+    g.tickEmergency(emergency!.deadline + 1)
+    const after = useGameStore.getState()
+    expect(after.satellites.length).toBeGreaterThanOrEqual(1)
+    expect(after.lastLoss).not.toBeNull()
+  })
+
+  it('payEvasion deducts fuel from the satellite and clears emergency', () => {
+    const g = useGameStore.getState()
+    g.maybeSpawnConjunction(1000, 0.05)
+    const { emergency } = useGameStore.getState()
+    const sat = useGameStore.getState().satellites.find((s) => s.id === emergency!.satId)!
+    const fuelBefore = sat.fuel
+    const ok = g.payEvasion()
+    expect(ok).toBe(true)
+    expect(useGameStore.getState().emergency).toBeNull()
+    const satAfter = useGameStore.getState().satellites.find((s) => s.id === sat.id)!
+    expect(satAfter.fuel).toBe(fuelBefore - emergency!.requiredDv)
+  })
+
+  it('payEvasion returns false when satellite has insufficient fuel', () => {
+    const g = useGameStore.getState()
+    g.maybeSpawnConjunction(1000, 0.05)
+    const { emergency } = useGameStore.getState()
+    // Set fuel to zero
+    useGameStore.setState({
+      satellites: useGameStore.getState().satellites.map((s) =>
+        s.id === emergency!.satId ? { ...s, fuel: 0 } : s,
+      ),
+    })
+    const ok = g.payEvasion()
+    expect(ok).toBe(false)
+    expect(useGameStore.getState().emergency).not.toBeNull()
+  })
+
+  it('clearLoss sets lastLoss to null', () => {
+    useGameStore.setState({ lastLoss: { name: 'HYPERION-TEST' } })
+    useGameStore.getState().clearLoss()
+    expect(useGameStore.getState().lastLoss).toBeNull()
+  })
+
+  it('resetForTest clears emergency, lastConjunctionAt, and lastLoss', () => {
+    useGameStore.setState({ emergency: null, lastConjunctionAt: 999, lastLoss: { name: 'X' } })
+    useGameStore.getState().resetForTest()
+    const s = useGameStore.getState()
+    expect(s.emergency).toBeNull()
+    expect(s.lastConjunctionAt).toBe(0)
+    expect(s.lastLoss).toBeNull()
+  })
+})
+
 describe('satellite capabilities and service records', () => {
   beforeEach(() => {
     useGameStore.getState().resetForTest()
