@@ -10,6 +10,7 @@ import AgencyBar from '@/components/AgencyBar'
 import ContractsPanel from '@/components/ContractsPanel'
 import InterceptReadout from '@/components/InterceptReadout'
 import GuidePanel from '@/components/GuidePanel'
+import GuidanceHint from '@/components/GuidanceHint'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -44,6 +45,7 @@ export default function Hud() {
       <BurnOverlay />
       <BriefingPanel />
       <AgencyBar />
+      <GuidanceHint />
       <InterceptReadout />
       <GuidePanel />
       <FoundingScreen />

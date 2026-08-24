@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useContractStore } from '@/state/contractStore'
 import { useGameStore, previewElements, burnCost } from '@/state/gameStore'
-import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
+import { closestApproach, COMPLETION_RADIUS_KM, firstPassEta, normalHint } from '@/lib/intercept'
 import { orbitalPeriod } from '@/lib/orbits'
 import { simNow, TIME_SCALE } from '@/lib/simTime'
 
@@ -31,17 +31,26 @@ export default function InterceptReadout() {
   const planning = burnCost(burnPlan) > 0
   const elements = planning ? previewElements(sat, burnPlan, now) : sat.elements
   const period = orbitalPeriod(elements.a)
-  const { closestKm, etaSec } = closestApproach(elements, { lat: target.lat, lon: target.lon }, now, 3 * period)
+  const windowSec = 3 * period
+  const { closestKm, etaSec } = closestApproach(elements, { lat: target.lat, lon: target.lon }, now, windowSec)
   const ok = closestKm <= COMPLETION_RADIUS_KM
-  const etaWall = etaSec / TIME_SCALE
+  const hint = ok ? 0 : normalHint(elements, { lat: target.lat, lon: target.lon }, now, windowSec)
+  const passEtaSec = ok
+    ? (firstPassEta(elements, { lat: target.lat, lon: target.lon }, now, windowSec, COMPLETION_RADIUS_KM) ?? etaSec)
+    : etaSec
+  const etaWall = passEtaSec / TIME_SCALE
   const etaMin = Math.floor(etaWall / 60)
+  const etaS = Math.round(etaWall % 60)
 
   return (
     <div className="pointer-events-none fixed bottom-6 left-1/2 z-20 -translate-x-1/2 font-mono text-xs">
       <div className={`rounded-full border px-4 py-1.5 backdrop-blur ${ok ? 'border-emerald-400/60 bg-emerald-400/10 text-emerald-300' : 'border-white/15 bg-black/60 text-[var(--text)]'}`}>
         <span className="opacity-70">{sat.name} → {target.title.slice(0, 28)} · </span>
         <span className="tabular-nums font-semibold">
-          closest {Math.round(closestKm)} km {ok ? '✓' : `(need ≤${COMPLETION_RADIUS_KM})`} · {planning ? 'ghost ' : ''}pass in {etaMin}m {Math.round(etaWall % 60)}s
+          closest {Math.round(closestKm)} km{' '}
+          {ok
+            ? `✓ · ${planning ? 'ghost ' : ''}pass in ${etaMin}m ${etaS}s`
+            : `(need ≤${COMPLETION_RADIUS_KM}) · ${hint === 0 ? 'try a NORMAL burn' : `nudge NORMAL ${hint < 0 ? '◀' : '▶'}`}`}
         </span>
       </div>
     </div>
