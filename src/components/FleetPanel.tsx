@@ -9,6 +9,9 @@ import { SATELLITE_PRICE, refuelPrice } from '@/lib/economy'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
 import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
+import { CAPABILITY_LABEL, CAPABILITY_COLOR } from '@/lib/satelliteMeta'
+import { Chip } from '@/components/ui/Chip'
+import SatelliteRecordCard from '@/components/SatelliteRecordCard'
 
 function telemetry(sat: Satellite) {
   const { position, velocity } = propagate(sat.elements, simNow())
@@ -49,6 +52,9 @@ export default function FleetPanel() {
     contracts.find((c) => c.id === targetId && c.status === 'active') ??
     contracts.find((c) => c.status === 'active') ?? null
 
+  // Service-record card state.
+  const [recordOpen, setRecordOpen] = useState(false)
+
   // Re-render telemetry at 4 Hz; mounted gates hydration-sensitive output
   const [mounted, setMounted] = useState(false)
   const [, force] = useState(0)
@@ -64,113 +70,137 @@ export default function FleetPanel() {
   const canExecute = !!selected && cost > 0 && cost * 1.25 <= (selected?.fuel ?? 0)
 
   return (
-    <aside className="pointer-events-auto w-full space-y-3 font-mono text-xs text-[var(--text)]">
-      <section className="rounded border border-white/10 bg-black/55 p-3 backdrop-blur">
-        <h2 className="mb-2 text-[10px] tracking-[0.35em] text-[var(--accent)]">FLEET</h2>
-        <ul className="space-y-2">
-          {(() => {
-            const approaches = new Map<string, number>()
-            if (mounted && target) {
-              const now = simNow()
-              for (const sat of satellites) {
-                approaches.set(
-                  sat.id,
-                  closestApproach(sat.elements, { lat: target.lat, lon: target.lon }, now, 3 * orbitalPeriod(sat.elements.a)).closestKm,
-                )
-              }
-            }
-            const bestId =
-              approaches.size > 0
-                ? [...approaches.entries()].sort((a, b) => a[1] - b[1])[0][0]
-                : null
-            return satellites.map((sat) => {
-              const t = telemetry(sat)
-              const isSel = sat.id === selectedId
-              return (
-                <li key={sat.id}>
-                  <button
-                    onClick={() => { audio.chirp(); select(isSel ? null : sat.id) }}
-                    className={`w-full rounded border px-2 py-1.5 text-left transition ${
-                      isSel ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-white/10 hover:border-white/30'
-                    }`}
-                  >
-                    <span className="flex items-center justify-between">
-                      <span className="font-semibold">{sat.name}</span>
-                      <span className="tabular-nums opacity-70">{mounted ? `${t.altKm.toFixed(0)} km` : '— km'}</span>
-                    </span>
-                    <span className="mt-0.5 flex items-center justify-between tabular-nums opacity-70">
-                      <span>{mounted ? `${t.speedKms.toFixed(2)} km/s` : '— km/s'}</span>
-                      <span>Δv {sat.fuel.toFixed(0)}/{sat.fuelCapacity} m/s</span>
-                    </span>
-                    <span className="mt-1 block h-1 w-full rounded bg-white/10">
-                      <span
-                        className="block h-1 rounded bg-[var(--accent)]"
-                        style={{ width: `${(sat.fuel / sat.fuelCapacity) * 100}%` }}
-                      />
-                    </span>
-                    {target && approaches.has(sat.id) && (
-                      <span className="mt-0.5 flex items-center justify-between text-[10px]">
-                        <span className={approaches.get(sat.id)! <= COMPLETION_RADIUS_KM ? 'text-emerald-400' : 'text-amber-400/80'}>
-                          ◎ {Math.round(approaches.get(sat.id)!)} km to target
-                        </span>
-                        {sat.id === bestId && <span className="text-[var(--accent)]">◀ best</span>}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              )
-            })
-          })()}
-        </ul>
-      </section>
-
-      {selected && (
-        <section className="rounded border border-white/10 bg-black/55 p-3 backdrop-blur">
-          <h2 className="mb-2 text-[10px] tracking-[0.35em] text-[#ffb86b]">BURN PLAN — {selected.name}</h2>
-          <div className="space-y-2">
-            <DvField label="PROGRADE" value={burnPlan.prograde} onChange={(v) => setBurnPlan({ prograde: v })} />
-            <DvField label="NORMAL" value={burnPlan.normal} onChange={(v) => setBurnPlan({ normal: v })} />
-            <DvField label="RADIAL" value={burnPlan.radial} onChange={(v) => setBurnPlan({ radial: v })} />
-          </div>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="tabular-nums opacity-80">cost {cost.toFixed(1)} m/s</span>
-            <span className="flex gap-2">
-              <button
-                onClick={() => { audio.uiTick(); resetBurnPlan() }}
-                className="rounded border border-white/15 px-2 py-1 hover:border-white/40"
-              >
-                RESET
-              </button>
-              <button
-                onClick={() => { if (beginBurn()) audio.alert() }}
-                disabled={!canExecute}
-                className="rounded border border-[#ffb86b] px-2 py-1 text-[#ffb86b] transition enabled:hover:bg-[#ffb86b]/15 disabled:opacity-30"
-              >
-                IGNITE
-              </button>
-            </span>
-          </div>
-        </section>
+    <>
+      {recordOpen && selectedId && (
+        <SatelliteRecordCard onClose={() => setRecordOpen(false)} />
       )}
+      <aside className="pointer-events-auto w-full space-y-3 font-mono text-xs text-[var(--text)]">
+        <section className="rounded border border-white/10 bg-black/55 p-3 backdrop-blur">
+          <h2 className="mb-2 text-[10px] tracking-[0.35em] text-[var(--accent)]">FLEET</h2>
+          <ul className="space-y-2">
+            {(() => {
+              const approaches = new Map<string, number>()
+              if (mounted && target) {
+                const now = simNow()
+                for (const sat of satellites) {
+                  approaches.set(
+                    sat.id,
+                    closestApproach(sat.elements, { lat: target.lat, lon: target.lon }, now, 3 * orbitalPeriod(sat.elements.a)).closestKm,
+                  )
+                }
+              }
+              const bestId =
+                approaches.size > 0
+                  ? [...approaches.entries()].sort((a, b) => a[1] - b[1])[0][0]
+                  : null
+              return satellites.map((sat) => {
+                const t = telemetry(sat)
+                const isSel = sat.id === selectedId
+                const capLabel = CAPABILITY_LABEL[sat.capability]
+                const capColor = CAPABILITY_COLOR[capLabel]
+                return (
+                  <li key={sat.id}>
+                    <button
+                      onClick={() => { audio.chirp(); select(isSel ? null : sat.id) }}
+                      className={`w-full rounded border px-2 py-1.5 text-left transition ${
+                        isSel ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-white/10 hover:border-white/30'
+                      }`}
+                    >
+                      <span className="flex items-center justify-between">
+                        <span className="font-semibold">{sat.name}</span>
+                        <span className="tabular-nums opacity-70">{mounted ? `${t.altKm.toFixed(0)} km` : '— km'}</span>
+                      </span>
+                      {/* Capability chip + completed badge row */}
+                      <span className="mt-1 flex items-center gap-1.5">
+                        <Chip color={capColor}>{capLabel}</Chip>
+                        {sat.record.contractsCompleted > 0 && (
+                          <Chip color="var(--accent)">✓ {sat.record.contractsCompleted}</Chip>
+                        )}
+                      </span>
+                      <span className="mt-1 flex items-center justify-between tabular-nums opacity-70">
+                        <span>{mounted ? `${t.speedKms.toFixed(2)} km/s` : '— km/s'}</span>
+                        <span>Δv {sat.fuel.toFixed(0)}/{sat.fuelCapacity} m/s</span>
+                      </span>
+                      <span className="mt-1 block h-1 w-full rounded bg-white/10">
+                        <span
+                          className="block h-1 rounded bg-[var(--accent)]"
+                          style={{ width: `${(sat.fuel / sat.fuelCapacity) * 100}%` }}
+                        />
+                      </span>
+                      {target && approaches.has(sat.id) && (
+                        <span className="mt-0.5 flex items-center justify-between text-[10px]">
+                          <span className={approaches.get(sat.id)! <= COMPLETION_RADIUS_KM ? 'text-emerald-400' : 'text-amber-400/80'}>
+                            ◎ {Math.round(approaches.get(sat.id)!)} km to target
+                          </span>
+                          {sat.id === bestId && <span className="text-[var(--accent)]">◀ best</span>}
+                        </span>
+                      )}
+                    </button>
+                    {/* Record affordance — visible only on the selected row */}
+                    {isSel && (
+                      <button
+                        onClick={() => { audio.uiTick(); setRecordOpen(true) }}
+                        className="mt-1 flex w-full items-center justify-center gap-1 rounded border border-white/10 px-2 py-0.5 text-[10px] opacity-60 hover:border-[var(--accent)]/50 hover:opacity-100 transition"
+                      >
+                        <span>▤</span>
+                        <span>record</span>
+                      </button>
+                    )}
+                  </li>
+                )
+              })
+            })()}
+          </ul>
+        </section>
 
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
         {selected && (
-          <button
-            onClick={() => { if (refuelSatellite(selected.id)) audio.uiTick() }}
-            disabled={selected.fuel >= selected.fuelCapacity || funding < refuelPrice(selected.fuelCapacity - selected.fuel)}
-            className="rounded border border-white/15 px-2 py-1 text-[11px] transition enabled:hover:border-white/40 disabled:opacity-30"
-          >
-            REFUEL §{refuelPrice((selected?.fuelCapacity ?? 0) - (selected?.fuel ?? 0))}
-          </button>
+          <section className="rounded border border-white/10 bg-black/55 p-3 backdrop-blur">
+            <h2 className="mb-2 text-[10px] tracking-[0.35em] text-[#ffb86b]">BURN PLAN — {selected.name}</h2>
+            <div className="space-y-2">
+              <DvField label="PROGRADE" value={burnPlan.prograde} onChange={(v) => setBurnPlan({ prograde: v })} />
+              <DvField label="NORMAL" value={burnPlan.normal} onChange={(v) => setBurnPlan({ normal: v })} />
+              <DvField label="RADIAL" value={burnPlan.radial} onChange={(v) => setBurnPlan({ radial: v })} />
+            </div>
+            <div className="mt-3 flex items-center justify-between">
+              <span className="tabular-nums opacity-80">cost {cost.toFixed(1)} m/s</span>
+              <span className="flex gap-2">
+                <button
+                  onClick={() => { audio.uiTick(); resetBurnPlan() }}
+                  className="rounded border border-white/15 px-2 py-1 hover:border-white/40"
+                >
+                  RESET
+                </button>
+                <button
+                  onClick={() => { if (beginBurn()) audio.alert() }}
+                  disabled={!canExecute}
+                  className="rounded border border-[#ffb86b] px-2 py-1 text-[#ffb86b] transition enabled:hover:bg-[#ffb86b]/15 disabled:opacity-30"
+                >
+                  IGNITE
+                </button>
+              </span>
+            </div>
+          </section>
         )}
-        <button
-          onClick={() => { if (buySatellite()) audio.chirp() }}
-          disabled={funding < SATELLITE_PRICE}
-          className="ml-auto rounded border border-[var(--accent)]/40 px-2 py-1 text-[11px] text-[var(--accent)] transition enabled:hover:bg-[var(--accent)]/10 disabled:opacity-30"
-        >
-          BUY SATELLITE §{SATELLITE_PRICE}
-        </button>
-      </div>
-    </aside>
+
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+          {selected && (
+            <button
+              onClick={() => { if (refuelSatellite(selected.id)) audio.uiTick() }}
+              disabled={selected.fuel >= selected.fuelCapacity || funding < refuelPrice(selected.fuelCapacity - selected.fuel)}
+              className="rounded border border-white/15 px-2 py-1 text-[11px] transition enabled:hover:border-white/40 disabled:opacity-30"
+            >
+              REFUEL §{refuelPrice((selected?.fuelCapacity ?? 0) - (selected?.fuel ?? 0))}
+            </button>
+          )}
+          <button
+            onClick={() => { if (buySatellite()) audio.chirp() }}
+            disabled={funding < SATELLITE_PRICE}
+            className="ml-auto rounded border border-[var(--accent)]/40 px-2 py-1 text-[11px] text-[var(--accent)] transition enabled:hover:bg-[var(--accent)]/10 disabled:opacity-30"
+          >
+            BUY SATELLITE §{SATELLITE_PRICE}
+          </button>
+        </div>
+      </aside>
+    </>
   )
 }

@@ -4,9 +4,20 @@ import { useEffect, useState } from 'react'
 import { useContractStore } from '@/state/contractStore'
 import { useWorldStore } from '@/state/worldStore'
 import { useAgencyStore } from '@/state/agencyStore'
+import { useGameStore } from '@/state/gameStore'
 import { simNow, TIME_SCALE } from '@/lib/simTime'
 import { maxActiveContracts } from '@/lib/economy'
+import { CAPABILITY_LABEL } from '@/lib/satelliteMeta'
 import { audio } from '@/audio/AudioEngine'
+import type { Archetype } from '@/lib/archetype'
+import { ARCHETYPE_COLOR } from '@/lib/archetype'
+import { Chip } from '@/components/ui/Chip'
+
+const ARCHETYPE_LABEL: Record<Archetype, string> = {
+  relief:   'RELIEF',
+  research: 'RESEARCH',
+  defense:  'DEFENSE',
+}
 
 function countdown(deadline: number, now: number): string {
   const s = Math.max(0, Math.round((deadline - now) / TIME_SCALE))
@@ -22,6 +33,9 @@ export default function ContractsPanel() {
   const accept = useContractStore((s) => s.accept)
   const setTarget = useContractStore((s) => s.setTarget)
   const focusEvent = useWorldStore((s) => s.focusEvent)
+  const selectedId = useGameStore((s) => s.selectedId)
+  const satellites = useGameStore((s) => s.satellites)
+  const selectedCapability = satellites.find((s) => s.id === selectedId)?.capability ?? null
 
   const [now, setNow] = useState<number | null>(null)
   useEffect(() => {
@@ -48,21 +62,34 @@ export default function ContractsPanel() {
 
         {available.length > 0 && (
           <ul className="mb-2 space-y-1">
-            {available.map((c) => (
-              <li key={c.id} className="rounded border border-white/10 p-2">
-                <p className="mb-1 truncate font-semibold">{c.title}</p>
-                <p className="flex items-center justify-between">
-                  <span className="tabular-nums opacity-70" style={{ color: 'var(--accent)' }}>§{c.reward.funding} · REP {c.reward.reputation}</span>
-                  <button
-                    onClick={() => { if (accept(c.id)) audio.alert() }}
-                    disabled={active.length >= cap}
-                    className="rounded border border-[var(--accent)]/40 px-2 py-0.5 text-[10px] text-[var(--accent)] transition enabled:hover:bg-[var(--accent)]/10 disabled:opacity-30"
-                  >
-                    ACCEPT
-                  </button>
-                </p>
-              </li>
-            ))}
+            {available.map((c) => {
+              const archColor = ARCHETYPE_COLOR[c.archetype]
+              const archLabel = ARCHETYPE_LABEL[c.archetype]
+              const capLabel = CAPABILITY_LABEL[c.preferredCapability]
+              const isMatch = selectedCapability !== null && selectedCapability === c.preferredCapability
+              return (
+                <li key={c.id} className="rounded border border-white/10 p-2">
+                  <p className="mb-1 truncate font-semibold">{c.title}</p>
+                  <p className="mb-1 flex items-center gap-1.5">
+                    <Chip color={archColor}>{archLabel}</Chip>
+                    <Chip className="opacity-60">{capLabel}</Chip>
+                    {isMatch && (
+                      <span className="text-[9px] text-yellow-400 opacity-80">★ match</span>
+                    )}
+                  </p>
+                  <p className="flex items-center justify-between">
+                    <span className="tabular-nums opacity-70" style={{ color: 'var(--accent)' }}>§{c.reward.funding} · REP {c.reward.reputation}</span>
+                    <button
+                      onClick={() => { if (accept(c.id)) audio.alert() }}
+                      disabled={active.length >= cap}
+                      className="rounded border border-[var(--accent)]/40 px-2 py-0.5 text-[10px] text-[var(--accent)] transition enabled:hover:bg-[var(--accent)]/10 disabled:opacity-30"
+                    >
+                      ACCEPT
+                    </button>
+                  </p>
+                </li>
+              )
+            })}
           </ul>
         )}
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useAgencyStore } from './agencyStore'
+import { useAgencyStore, agencyTitle, agencyArchetype } from './agencyStore'
 import { STARTING_FUNDING } from '@/lib/economy'
+import { saveJSON } from '@/lib/persist'
 
 beforeEach(() => useAgencyStore.getState().resetForTest())
 
@@ -26,5 +27,34 @@ describe('agencyStore', () => {
   it('reputation never goes below zero', () => {
     useAgencyStore.getState().addReputation(-50)
     expect(useAgencyStore.getState().reputation).toBe(0)
+  })
+
+  // Archetype tests
+  it('founding leaves leaning zero → title "Startup Outfit"', () => {
+    useAgencyStore.getState().found('Test Agency', 'crest-rings', '#45d8ff')
+    expect(agencyTitle()).toContain('Startup Outfit')
+    expect(agencyArchetype()).toBeNull()
+  })
+  it('advanceArchetype accumulates leaning; dominant becomes relief after 2 relief + 1 defense', () => {
+    useAgencyStore.getState().advanceArchetype('relief')
+    useAgencyStore.getState().advanceArchetype('relief')
+    useAgencyStore.getState().advanceArchetype('defense')
+    expect(agencyArchetype()).toBe('relief')
+  })
+  it('hydrate backfills missing leaning from old saves', () => {
+    // Simulate an old save without the leaning field
+    saveJSON('hyperion-agency-v1', {
+      founded: true,
+      name: 'Old Agency',
+      emblemId: 'crest-rings',
+      colorway: '#45d8ff',
+      funding: 1000,
+      reputation: 50,
+      // no leaning field
+    })
+    useAgencyStore.getState().hydrate()
+    const s = useAgencyStore.getState()
+    expect(s.leaning).toEqual({ relief: 0, research: 0, defense: 0 })
+    expect(agencyTitle()).toContain('Startup Outfit')
   })
 })

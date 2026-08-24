@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 import { STARTING_FUNDING, STARTING_REPUTATION } from '@/lib/economy'
+import {
+  Archetype,
+  Leaning,
+  ZERO_LEANING,
+  advanceLeaning,
+  dominantArchetype,
+  archetypeTitle,
+} from '@/lib/archetype'
 
 const KEY = 'hyperion-agency-v1'
 
@@ -11,6 +19,7 @@ interface Persisted {
   colorway: string
   funding: number
   reputation: number
+  leaning: Leaning
 }
 
 const DEFAULTS: Persisted = {
@@ -20,6 +29,7 @@ const DEFAULTS: Persisted = {
   colorway: '#45d8ff',
   funding: STARTING_FUNDING,
   reputation: STARTING_REPUTATION,
+  leaning: ZERO_LEANING,
 }
 
 interface AgencyState extends Persisted {
@@ -27,6 +37,7 @@ interface AgencyState extends Persisted {
   addFunding(n: number): void
   spendFunding(n: number): boolean
   addReputation(n: number): void
+  advanceArchetype(tag: Archetype, weight?: number): void
   hydrate(): void
   resetForTest(): void
 }
@@ -35,6 +46,7 @@ function persistOf(s: AgencyState): Persisted {
   return {
     founded: s.founded, name: s.name, emblemId: s.emblemId,
     colorway: s.colorway, funding: s.funding, reputation: s.reputation,
+    leaning: s.leaning,
   }
 }
 
@@ -63,10 +75,28 @@ export const useAgencyStore = create<AgencyState>((set, get) => ({
     saveJSON(KEY, persistOf(get()))
   },
 
-  hydrate: () => set(loadJSON<Persisted>(KEY, DEFAULTS)),
+  advanceArchetype: (tag, weight?) => {
+    set((s) => ({ leaning: advanceLeaning(s.leaning, tag, weight) }))
+    saveJSON(KEY, persistOf(get()))
+  },
+
+  hydrate: () => {
+    const saved = loadJSON<Persisted>(KEY, DEFAULTS)
+    set({ ...saved, leaning: saved.leaning ?? ZERO_LEANING })
+  },
 
   resetForTest: () => {
     clearKey(KEY)
     set({ ...DEFAULTS })
   },
 }))
+
+export function agencyTitle(): string {
+  const s = useAgencyStore.getState()
+  return archetypeTitle(dominantArchetype(s.leaning), s.reputation)
+}
+
+export function agencyArchetype(): Archetype | null {
+  const s = useAgencyStore.getState()
+  return dominantArchetype(s.leaning)
+}

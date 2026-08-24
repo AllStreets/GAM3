@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import FleetPanel from '@/components/FleetPanel'
 import EventsPanel from '@/components/EventsPanel'
-import BurnOverlay from '@/components/BurnOverlay'
+import BurnOverlay, { BurnGradeReadout } from '@/components/BurnOverlay'
 import BriefingPanel from '@/components/BriefingPanel'
 import FoundingScreen from '@/components/FoundingScreen'
 import AgencyBar from '@/components/AgencyBar'
@@ -11,6 +11,11 @@ import ContractsPanel from '@/components/ContractsPanel'
 import InterceptReadout from '@/components/InterceptReadout'
 import GuidePanel from '@/components/GuidePanel'
 import GuidanceHint from '@/components/GuidanceHint'
+import Walkthrough from '@/components/Walkthrough'
+import CompletionCinematic from '@/components/CompletionCinematic'
+import { ConjunctionAlert, LossBeat } from '@/components/EmergencyAlert'
+import ColdOpenScreen from '@/components/ColdOpenScreen'
+import PostcardButton from '@/components/PostcardButton'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -43,12 +48,22 @@ export default function Hud() {
       </div>
       <EventsPanel />
       <BurnOverlay />
+      <BurnGradeReadout />
       <BriefingPanel />
       <AgencyBar />
       <GuidanceHint />
       <InterceptReadout />
       <GuidePanel />
+      <Walkthrough />
       <FoundingScreen />
+      <ColdOpenScreen />
+      <CompletionCinematic />
+      <ConjunctionAlert />
+      <LossBeat />
+      {/* Postcard capture — bottom-right corner, above AgencyBar */}
+      <div className="pointer-events-none fixed bottom-6 right-6 z-20 flex flex-col items-end gap-2">
+        <PostcardButton />
+      </div>
     </div>
   )
 }

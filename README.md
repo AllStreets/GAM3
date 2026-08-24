@@ -6,7 +6,7 @@ A browser game about running a private orbital agency over a living Earth —
 real orbital mechanics, real live world events, and an AI-woven world that
 grows differently for every player.
 
-**Status:** Plan 7A.5 (legibility & pacing — best-bird intercept, directional burn hints, guidance nudge, near-term pass ETA, collapsed events) complete.
+**Status:** Plan 7A.5 (legibility & pacing) complete — the core loop now teaches itself.
 
 ## Stack
 

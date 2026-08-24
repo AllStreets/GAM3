@@ -1,14 +1,27 @@
 import type { Contract } from '@/state/contractStore'
 import type { WorldEvent } from '@/lib/worldEvents'
+import type { Archetype } from '@/lib/archetype'
+import type { Capability } from '@/lib/satelliteMeta'
 import { contractReward, contractDeadline } from '@/lib/economy'
+import { archetypeForKind, capabilityForKind } from '@/lib/contractMeta'
 
 export interface BriefingMission {
   title: string
   eventId: string
   objective: string
+  /** Proposed by the AI — engine still sets reward/deadline from event kind. */
+  archetype?: Archetype
+  preferredCapability?: Capability
 }
 
-function contractForEvent(title: string, ev: WorldEvent, simNow: number, periodSec: number): Contract {
+function contractForEvent(
+  title: string,
+  ev: WorldEvent,
+  simNow: number,
+  periodSec: number,
+  missionArchetype?: Archetype,
+  missionCapability?: Capability,
+): Contract {
   return {
     id: `contract-${ev.id}`,
     eventId: ev.id,
@@ -19,6 +32,9 @@ function contractForEvent(title: string, ev: WorldEvent, simNow: number, periodS
     deadline: contractDeadline(simNow, periodSec),
     reward: contractReward(ev.severity),
     status: 'available',
+    // Use the mission's AI-proposed values when present; fall back to kind derivation
+    archetype: missionArchetype ?? archetypeForKind(ev.kind),
+    preferredCapability: missionCapability ?? capabilityForKind(ev.kind),
   }
 }
 
@@ -33,7 +49,7 @@ export function contractsFromBriefing(
   const out: Contract[] = []
   for (const m of missions) {
     const ev = byId.get(m.eventId)
-    if (ev) out.push(contractForEvent(m.title, ev, simNow, periodSec))
+    if (ev) out.push(contractForEvent(m.title, ev, simNow, periodSec, m.archetype, m.preferredCapability))
   }
   return out
 }

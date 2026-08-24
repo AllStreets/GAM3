@@ -10,11 +10,20 @@ import { EARTH_RADIUS, latLonToVector3, subsolarPoint } from '@/lib/geo'
 import { SatelliteLayer } from '@/engine/SatelliteLayer'
 import { EventLayer } from '@/engine/EventLayer'
 import { ContractLayer } from '@/engine/ContractLayer'
+import { CompletionFx } from '@/engine/CompletionFx'
 import { simNow } from '@/lib/simTime'
 import { useGameStore } from '@/state/gameStore'
+import { useContractStore } from '@/state/contractStore'
 import { useWorldStore } from '@/state/worldStore'
 import { BurnDirector } from '@/engine/BurnDirector'
+import { propagate, sceneFromEci } from '@/lib/orbits'
 import { audio } from '@/audio/AudioEngine'
+
+/** Module-level reference so React components can call captureFrame without touching Three objects. */
+let _activeEngine: GlobeEngine | null = null
+export function getActiveEngine(): GlobeEngine | null {
+  return _activeEngine
+}
 
 export class GlobeEngine {
   private renderer: THREE.WebGLRenderer
@@ -38,11 +47,15 @@ export class GlobeEngine {
   private flight: { from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
   private pointerDown: { x: number; y: number } | null = null
   private burnDirector = new BurnDirector()
+  private completionFx = new CompletionFx()
+  private lastSeenCompletionId: string | null = null
   private lastElapsed = 0
+  private lastEmergencyTick = -1e9
   private sunLight = new THREE.DirectionalLight(0xfff4e0, 2.2)
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
+    _activeEngine = this
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000)
@@ -117,6 +130,7 @@ export class GlobeEngine {
     this.scene.add(this.eventLayer.group)
 
     this.scene.add(this.contractLayer.group)
+    this.scene.add(this.completionFx.group)
 
     this.worldUnsub = useWorldStore.subscribe((state, prev) => {
       if (state.focusedId && state.focusedId !== prev.focusedId) {
@@ -259,6 +273,48 @@ export class GlobeEngine {
       this.controls.enabled = false
       this.flight = null // a burn cancels any event flight
     }
+
+    // --- Completion chase-lock (below burn chase; never overrides an active burn) ---
+    // Read the latest completion event from the store; trigger FX if it's new.
+    const latestCompletion = useContractStore.getState().lastCompletion
+    if (latestCompletion && latestCompletion.contractId !== this.lastSeenCompletionId) {
+      this.lastSeenCompletionId = latestCompletion.contractId
+      this.completionFx.trigger(latestCompletion.lat, latestCompletion.lon, latestCompletion.completedBy)
+    }
+    this.completionFx.update(dt)
+    // Ease camera toward the focus satellite while FX is active and no burn is running.
+    if (this.completionFx.active && !this.burnDirector.active) {
+      const focusSatId = this.completionFx.focusSat
+      const satellites = useGameStore.getState().satellites
+      const focusSat = focusSatId ? satellites.find((s) => s.id === focusSatId) : null
+      if (focusSat) {
+        const sv = propagate(focusSat.elements, simNow())
+        const satScene = sceneFromEci(sv.position)
+        // Ease the camera to look at the satellite by gently pulling toward a
+        // position that is `currentDist` away in the satellite's direction from
+        // the Earth centre. Keep orbit controls disabled only while easing.
+        const currentDist = this.camera.position.length()
+        const target = satScene.clone().normalize().multiplyScalar(currentDist)
+        this.camera.position.lerp(target, Math.min(1, dt * 1.5))
+        this.camera.lookAt(0, 0, 0)
+        this.controls.enabled = false
+      }
+    }
+    // --- End completion chase-lock ---
+
+    // ── Emergency spawn + expiry (throttled once per sim-minute = 60 sim-sec) ──
+    const simTime = simNow()
+    if (simTime - this.lastEmergencyTick > 60) {
+      this.lastEmergencyTick = simTime
+      // Deterministic roll: fractional part of a slowly-varying function of sim time.
+      // Varies continuously but never uses Math.random, so no state-dependent randomness.
+      const roll = (Math.sin(simTime * 0.1) * 0.5 + 0.5)
+      const gs = useGameStore.getState()
+      gs.maybeSpawnConjunction(simTime, roll)
+      gs.tickEmergency(simTime)
+    }
+    // ── End emergency tick ──
+
     this.updateSun()
     if (this.clouds) this.clouds.rotation.y = elapsedSeconds * 0.004
     this.satLayer.update(simNow())
@@ -304,7 +360,20 @@ export class GlobeEngine {
     return this.renderer
   }
 
+  /**
+   * Capture the current rendered frame as a PNG data URL.
+   * Since we already create the renderer with `preserveDrawingBuffer: true`,
+   * we force a synchronous render and read back immediately.
+   */
+  captureFrame(): string {
+    this.controls.update()
+    if (this.composer) this.composer.render()
+    else this.renderer.render(this.scene, this.camera)
+    return this.renderer.domElement.toDataURL('image/png')
+  }
+
   dispose() {
+    if (_activeEngine === this) _activeEngine = null
     this.disposedFlag = true
     cancelAnimationFrame(this.frameHandle)
     this.resizeObserver.disconnect()
@@ -312,6 +381,7 @@ export class GlobeEngine {
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.worldUnsub?.()
     this.burnDirector.dispose()
+    this.completionFx.dispose()
     this.contractLayer.dispose()
     this.eventLayer.dispose()
     this.satLayer.dispose()

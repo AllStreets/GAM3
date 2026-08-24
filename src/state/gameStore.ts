@@ -1,11 +1,22 @@
 import { create } from 'zustand'
 import {
-  applyDeltaV, MS_TO_ER, type OrbitalElements,
+  applyDeltaV, MS_TO_ER, orbitalPeriod, type OrbitalElements,
 } from '@/lib/orbits'
 import { recordBurn, recordAbort } from '@/lib/profile'
 import { refuelPrice, SATELLITE_PRICE } from '@/lib/economy'
 import { useAgencyStore } from '@/state/agencyStore'
 import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
+import {
+  type Capability, type ServiceRecord,
+  seedCapability, fillGapCapability, freshRecord, simDaysInOrbit,
+} from '@/lib/satelliteMeta'
+import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
+import { scoreManeuver, detectTrickShot, type ManeuverScore } from '@/lib/maneuverScore'
+import { useContractStore } from '@/state/contractStore'
+import {
+  type Conjunction, shouldSpawnConjunction, makeConjunction,
+  isResolvedByBurn, isExpired,
+} from '@/lib/emergency'
 
 export interface Satellite {
   id: string
@@ -14,6 +25,8 @@ export interface Satellite {
   /** Remaining delta-v budget, m/s. */
   fuel: number
   fuelCapacity: number
+  capability: Capability
+  record: ServiceRecord
 }
 
 export interface BurnPlan {
@@ -30,11 +43,11 @@ const FLEET_KEY = 'hyperion-fleet-v1'
 
 function seedFleet(): Satellite[] {
   return [
-    { id: 'hyp-1', name: 'HYPERION-1', elements: { a: (6371 + 420) / 6371, e: 0.0012, i: deg(51.6), raan: 0.8, argp: 0.3, m0: 0, epoch: 0 }, fuel: 1800, fuelCapacity: 1800 },
-    { id: 'hyp-2', name: 'HYPERION-2', elements: { a: (6371 + 780) / 6371, e: 0.002, i: deg(97.5), raan: 2.4, argp: 1.1, m0: 2.0, epoch: 0 }, fuel: 1500, fuelCapacity: 1500 },
-    { id: 'hyp-3', name: 'HYPERION-3', elements: { a: (6371 + 550) / 6371, e: 0.001, i: deg(28), raan: 4.3, argp: 0.7, m0: 3.1, epoch: 0 }, fuel: 1500, fuelCapacity: 1500 },
-    { id: 'hyp-4', name: 'HYPERION-4', elements: { a: (6371 + 650) / 6371, e: 0.0015, i: deg(63), raan: 1.6, argp: 2.0, m0: 5.0, epoch: 0 }, fuel: 1500, fuelCapacity: 1500 },
-    { id: 'hyp-5', name: 'HYPERION-5', elements: { a: (6371 + 500) / 6371, e: 0.001, i: deg(82), raan: 5.5, argp: 1.4, m0: 1.7, epoch: 0 }, fuel: 1500, fuelCapacity: 1500 },
+    { id: 'hyp-1', name: 'HYPERION-1', elements: { a: (6371 + 420) / 6371, e: 0.0012, i: deg(51.6), raan: 0.8, argp: 0.3, m0: 0, epoch: 0 }, fuel: 1800, fuelCapacity: 1800, capability: seedCapability(0), record: freshRecord(0) },
+    { id: 'hyp-2', name: 'HYPERION-2', elements: { a: (6371 + 780) / 6371, e: 0.002, i: deg(97.5), raan: 2.4, argp: 1.1, m0: 2.0, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(1), record: freshRecord(0) },
+    { id: 'hyp-3', name: 'HYPERION-3', elements: { a: (6371 + 550) / 6371, e: 0.001, i: deg(28), raan: 4.3, argp: 0.7, m0: 3.1, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(2), record: freshRecord(0) },
+    { id: 'hyp-4', name: 'HYPERION-4', elements: { a: (6371 + 650) / 6371, e: 0.0015, i: deg(63), raan: 1.6, argp: 2.0, m0: 5.0, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(3), record: freshRecord(0) },
+    { id: 'hyp-5', name: 'HYPERION-5', elements: { a: (6371 + 500) / 6371, e: 0.001, i: deg(82), raan: 5.5, argp: 1.4, m0: 1.7, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(4), record: freshRecord(0) },
   ]
 }
 
@@ -77,6 +90,17 @@ interface GameState {
   burnSession: BurnSession | null
   /** Non-reactive live burn telemetry — direct-mutated by the engine, polled by the overlay. */
   burnLive: { needle: number; progress: number; quality: number }
+  /** Transient post-burn scoring signals — not persisted, reset on resetForTest. */
+  lastManeuver: ManeuverScore | null
+  lastTrickShot: { count: number } | null
+  /** Operational-tempo streak — consecutive contract completions; reset on failure. Not persisted. */
+  streak: number
+  /** Active debris-conjunction emergency, or null. NOT persisted (transient per session). */
+  emergency: Conjunction | null
+  /** Last sim-time a conjunction was spawned. Persisted so gaps survive reloads. */
+  lastConjunctionAt: number
+  /** Transient: set when a satellite is permanently lost; cleared by clearLoss(). */
+  lastLoss: { name: string } | null
   select(id: string | null): void
   setBurnPlan(p: Partial<BurnPlan>): void
   resetBurnPlan(): void
@@ -88,6 +112,22 @@ interface GameState {
   refuelSatellite(id: string): boolean
   buySatellite(): boolean
   hydrate(): void
+  recordContractPass(satId: string, note?: string): void
+  bumpStreak(): void
+  resetStreak(): void
+  clearLastManeuver(): void
+  /** Check and possibly spawn a conjunction; supply a deterministic roll ∈ [0,1). */
+  maybeSpawnConjunction(now: number, roll: number): void
+  /** Clear the emergency when the burned sat has spent enough Δv. */
+  resolveEmergencyByBurn(satId: string, dvSpent: number): void
+  /** Pay fuel cost to dodge without flying; returns false if insufficient fuel. */
+  payEvasion(): boolean
+  /** Permanently remove a satellite; grant a free provisional replacement if fleet would reach 0. */
+  loseSatellite(satId: string): void
+  /** Dismiss the loss-beat overlay. */
+  clearLoss(): void
+  /** Called every engine tick: if emergency is expired, lose the satellite. */
+  tickEmergency(now: number): void
   resetForTest(): void
 }
 
@@ -98,6 +138,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   previewAt: 0,
   burnSession: null,
   burnLive: { needle: 0, progress: 0, quality: 1 },
+  lastManeuver: null,
+  lastTrickShot: null,
+  streak: 0,
+  emergency: null,
+  lastConjunctionAt: 0,
+  lastLoss: null,
 
   select: (id) => set({ selectedId: id, burnPlan: { ...ZERO_PLAN } }),
 
@@ -118,7 +164,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ),
       burnPlan: { ...ZERO_PLAN },
     })
-    saveJSON(FLEET_KEY, { satellites: get().satellites })
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
     return true
   },
 
@@ -142,21 +188,57 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!sat) { set({ burnSession: null }); return false }
     const elements = previewElements(sat, burnSession.plan, at)
     const spent = Math.min(sat.fuel, fuelCostWithQuality(burnSession.cost, quality))
+
+    // Compute maneuver score against the tracked/first active contract target.
+    const allContracts = useContractStore.getState().contracts
+    const activeContracts = allContracts.filter((c) => c.status === 'active')
+    const targetId = useContractStore.getState().targetId
+    const targetContract =
+      (targetId ? activeContracts.find((c) => c.id === targetId) : null) ??
+      activeContracts[0] ??
+      null
+
+    const windowSec = orbitalPeriod(elements.a) * 3
+    const closestKm = targetContract
+      ? closestApproach(elements, { lat: targetContract.lat, lon: targetContract.lon }, at, windowSec).closestKm
+      : 0
+
+    const maneuverScore = scoreManeuver({
+      dvNeeded: burnSession.cost,
+      dvSpent: spent,
+      closestKm,
+      radiusKm: COMPLETION_RADIUS_KM,
+    })
+
+    const allTargets = activeContracts.map((c) => ({ lat: c.lat, lon: c.lon }))
+    const trickResult = detectTrickShot({ elements, targets: allTargets, fromT: at, windowSec, radiusKm: COMPLETION_RADIUS_KM })
+    const lastTrickShot = trickResult.isTrickShot ? { count: trickResult.count } : null
+
     set({
       satellites: satellites.map((s) =>
         s.id === sat.id ? { ...s, elements, fuel: s.fuel - spent } : s,
       ),
       burnSession: null,
       burnPlan: { prograde: 0, normal: 0, radial: 0 },
+      lastManeuver: maneuverScore,
+      lastTrickShot,
     })
     recordBurn(burnSession.cost, quality)
     const live = get().burnLive
     live.needle = 0; live.progress = 0; live.quality = 1
-    saveJSON(FLEET_KEY, { satellites: get().satellites })
+
+    // If there's an active emergency on this satellite, resolve it if spent >= requiredDv.
+    get().resolveEmergencyByBurn(burnSession.satId, spent)
+
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
     return true
   },
 
   abortBurn: () => { recordAbort(); set({ burnSession: null }) },
+
+  bumpStreak: () => set((s) => ({ streak: s.streak + 1 })),
+  resetStreak: () => set({ streak: 0 }),
+  clearLastManeuver: () => set({ lastManeuver: null, lastTrickShot: null }),
 
   refuelSatellite: (id) => {
     const sat = get().satellites.find((s) => s.id === id)
@@ -168,7 +250,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((s) => ({
       satellites: s.satellites.map((x) => (x.id === id ? { ...x, fuel: x.fuelCapacity } : x)),
     }))
-    saveJSON(FLEET_KEY, { satellites: get().satellites })
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
     return true
   },
 
@@ -184,18 +266,161 @@ export const useGameStore = create<GameState>((set, get) => ({
         raan: (0.6 * n) % (Math.PI * 2), argp: (0.4 * n) % (Math.PI * 2), m0: (1.1 * n) % (Math.PI * 2), epoch: 0,
       },
       fuel: 1500, fuelCapacity: 1500,
+      capability: fillGapCapability(get().satellites.map((s) => s.capability)),
+      record: freshRecord(get().previewAt ?? 0),
     }
     set((s) => ({ satellites: [...s.satellites, sat] }))
-    saveJSON(FLEET_KEY, { satellites: get().satellites })
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
     return true
   },
 
-  hydrate: () => set({ satellites: loadJSON<{ satellites: Satellite[] }>(FLEET_KEY, { satellites: seedFleet() }).satellites }),
+  hydrate: () => {
+    const raw = loadJSON<{ satellites: Satellite[]; lastConjunctionAt?: number }>(
+      FLEET_KEY,
+      { satellites: seedFleet(), lastConjunctionAt: 0 },
+    )
+    const backfilled = raw.satellites.map((s, index) => ({
+      ...s,
+      capability: s.capability ?? seedCapability(index),
+      record: s.record ?? freshRecord(0),
+    }))
+    set({ satellites: backfilled, lastConjunctionAt: raw.lastConjunctionAt ?? 0 })
+  },
+
+  recordContractPass: (satId, note) => {
+    set((s) => ({
+      satellites: s.satellites.map((sat) =>
+        sat.id === satId
+          ? {
+              ...sat,
+              record: {
+                ...sat.record,
+                contractsCompleted: sat.record.contractsCompleted + 1,
+                notablePasses: note
+                  ? [note, ...sat.record.notablePasses].slice(0, 6)
+                  : sat.record.notablePasses,
+              },
+            }
+          : sat,
+      ),
+    }))
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
+  },
+
+  // ── Emergency actions ──────────────────────────────────────────────────────
+
+  maybeSpawnConjunction: (now, roll) => {
+    const { emergency, lastConjunctionAt, satellites } = get()
+    if (emergency) return // already an active emergency
+    if (!shouldSpawnConjunction({
+      now,
+      lastSpawnAt: lastConjunctionAt,
+      minGapSec: 3600,
+      fleetSize: satellites.length,
+      roll,
+    })) return
+
+    // Pick satellite deterministically from roll.
+    const idx = Math.min(
+      Math.floor(roll * satellites.length),
+      satellites.length - 1,
+    )
+    const sat = satellites[idx]
+    if (!sat) return
+
+    const conjunction = makeConjunction(sat.id, now)
+    set({ emergency: conjunction, lastConjunctionAt: now })
+    // Lazy import to avoid circular dependency in tests.
+    if (typeof window !== 'undefined') {
+      // audio is browser-only; safe to import at runtime in game context.
+      import('@/audio/AudioEngine').then(({ audio }) => audio.alert()).catch(() => undefined)
+    }
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: now })
+  },
+
+  resolveEmergencyByBurn: (satId, dvSpent) => {
+    const { emergency } = get()
+    if (!emergency) return
+    if (emergency.satId !== satId) return
+    if (!isResolvedByBurn(emergency, dvSpent)) return
+    const now = get().previewAt ?? 0
+    const sat = get().satellites.find((s) => s.id === satId)
+    const days = sat ? simDaysInOrbit(sat.record.commissionedAt, now) : 0
+    get().recordContractPass(satId, `Evaded conjunction · SD ${days}`)
+    set({ emergency: null })
+  },
+
+  payEvasion: () => {
+    const { emergency, satellites } = get()
+    if (!emergency) return false
+    const sat = satellites.find((s) => s.id === emergency.satId)
+    if (!sat) return false
+    if (sat.fuel < emergency.requiredDv) return false // insufficient fuel
+    set((s) => ({
+      satellites: s.satellites.map((x) =>
+        x.id === emergency.satId ? { ...x, fuel: x.fuel - emergency.requiredDv } : x,
+      ),
+      emergency: null,
+    }))
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
+    return true
+  },
+
+  loseSatellite: (satId) => {
+    const { satellites } = get()
+    const sat = satellites.find((s) => s.id === satId)
+    if (!sat) return
+    const remaining = satellites.filter((s) => s.id !== satId)
+
+    if (remaining.length === 0) {
+      // Never-ruin: grant a free provisional replacement.
+      const n = satellites.length + 1
+      const provisional: Satellite = {
+        id: `hyp-prov-${Math.round(get().previewAt ?? 0)}`,
+        name: `HYPERION-${n}`,
+        elements: {
+          a: (6371 + 500) / 6371, e: 0.001, i: deg(51.6),
+          raan: 0.8, argp: 0.3, m0: 0, epoch: 0,
+        },
+        fuel: 1500, fuelCapacity: 1500,
+        capability: seedCapability(0),
+        record: freshRecord(get().previewAt ?? 0),
+      }
+      set({ satellites: [provisional], emergency: null, lastLoss: { name: sat.name } })
+    } else {
+      set({ satellites: remaining, emergency: null, lastLoss: { name: sat.name } })
+    }
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
+  },
+
+  clearLoss: () => set({ lastLoss: null }),
+
+  tickEmergency: (now) => {
+    const { emergency } = get()
+    if (!emergency) return
+    if (isExpired(emergency, now)) {
+      get().loseSatellite(emergency.satId)
+    }
+  },
+
+  // ── End emergency actions ──────────────────────────────────────────────────
 
   resetForTest: () => {
     clearKey(FLEET_KEY)
     const live = get().burnLive
     live.needle = 0; live.progress = 0; live.quality = 1
-    set({ satellites: seedFleet(), selectedId: null, burnPlan: { ...ZERO_PLAN }, previewAt: 0, burnSession: null })
+    set({
+      satellites: seedFleet(),
+      selectedId: null,
+      burnPlan: { ...ZERO_PLAN },
+      previewAt: 0,
+      burnSession: null,
+      lastManeuver: null,
+      lastTrickShot: null,
+      streak: 0,
+      emergency: null,
+      lastConjunctionAt: 0,
+      lastLoss: null,
+    })
   },
 }))
