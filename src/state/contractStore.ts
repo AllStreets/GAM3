@@ -9,6 +9,7 @@ import type { Satellite } from '@/state/gameStore'
 import type { Archetype } from '@/lib/archetype'
 import type { Capability } from '@/lib/satelliteMeta'
 import { archetypeForKind, capabilityForKind, matchBonusFunding } from '@/lib/contractMeta'
+import { reliefImpactLine } from '@/lib/reliefImpact'
 
 const KEY = 'hyperion-contracts-v1'
 
@@ -170,6 +171,7 @@ export const useContractStore = create<ContractState>((set, get) => ({
           multiplier,
           grade,
           trickShot,
+          ...(c.archetype === 'relief' ? { reliefImpact: reliefImpactLine(c.kind, c.title) } : {}),
         }
         const done = { ...c, status: 'completed' as const, completedBy: completingSat.id, matched }
         completed.push(done)

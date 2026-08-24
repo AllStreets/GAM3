@@ -197,4 +197,27 @@ describe('contractStore', () => {
     expect(c.archetype).toBe('relief')           // wildfire → relief
     expect(c.preferredCapability).toBe('thermal') // wildfire → thermal
   })
+
+  it('evaluate sets reliefImpact on lastCompletion for a relief contract', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon, kind: 'earthquake', archetype: 'relief' })])
+    useContractStore.getState().accept('c1')
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    const ev = useContractStore.getState().lastCompletion
+    expect(ev).not.toBeNull()
+    expect(ev!.reliefImpact).toBeTruthy()
+    expect(ev!.reliefImpact).toMatch(/relief|responder/i)
+  })
+
+  it('evaluate leaves reliefImpact undefined for a non-relief contract', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon, archetype: 'research' })])
+    useContractStore.getState().accept('c1')
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    const ev = useContractStore.getState().lastCompletion
+    expect(ev).not.toBeNull()
+    expect(ev!.reliefImpact).toBeUndefined()
+  })
 })
