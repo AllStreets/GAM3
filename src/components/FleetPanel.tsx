@@ -9,7 +9,7 @@ import { SATELLITE_PRICE, refuelPrice } from '@/lib/economy'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
 import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
-import { CAPABILITY_LABEL } from '@/lib/satelliteMeta'
+import { CAPABILITY_LABEL, CAPABILITY_COLOR } from '@/lib/satelliteMeta'
 import { Chip } from '@/components/ui/Chip'
 import SatelliteRecordCard from '@/components/SatelliteRecordCard'
 
@@ -33,12 +33,6 @@ function DvField({ label, value, onChange }: { label: string; value: number; onC
       <span className="w-14 text-right tabular-nums">{value} m/s</span>
     </label>
   )
-}
-
-const CAPABILITY_COLOR: Record<string, string> = {
-  OPTICAL:  '#60a5fa',
-  RELAY:    '#4ade80',
-  THERMAL:  '#f87171',
 }
 
 export default function FleetPanel() {

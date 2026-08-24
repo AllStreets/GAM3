@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useContractStore, type CompletionEvent } from '@/state/contractStore'
 import { audio } from '@/audio/AudioEngine'
+import { ARCHETYPE_COLOR } from '@/lib/archetype'
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -12,12 +13,6 @@ const ARCHETYPE_LABEL: Record<string, string> = {
   relief: 'RELIEF',
   research: 'SCIENCE',
   defense: 'DEFENSE',
-}
-
-const ARCHETYPE_COLOR: Record<string, string> = {
-  relief: '#ff9955',
-  research: '#45d8ff',
-  defense: '#c084fc',
 }
 
 // Count-up hook: animates a number from 0 → target over `ms` milliseconds.

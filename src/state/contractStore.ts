@@ -8,6 +8,7 @@ import { simNow } from '@/lib/simTime'
 import type { Satellite } from '@/state/gameStore'
 import type { Archetype } from '@/lib/archetype'
 import type { Capability } from '@/lib/satelliteMeta'
+import { simDaysInOrbit } from '@/lib/satelliteMeta'
 import { archetypeForKind, capabilityForKind, matchBonusFunding } from '@/lib/contractMeta'
 import { reliefImpactLine } from '@/lib/reliefImpact'
 
@@ -150,12 +151,19 @@ export const useContractStore = create<ContractState>((set, get) => ({
         funding = Math.round(funding * multiplier)
         agency.addFunding(funding)
         agency.addReputation(c.reward.reputation)
-        useGameStore.getState().recordContractPass(completingSat.id)
         useAgencyStore.getState().advanceArchetype(c.archetype)
         // Pull last maneuver/trick-shot from gameStore for the cinematic event.
         const gs = useGameStore.getState()
         const grade = gs.lastManeuver?.grade ?? undefined
         const trickShot = gs.lastTrickShot?.count ?? undefined
+        // Persist trick-shot note to the completing satellite's service record.
+        if (trickShot != null) {
+          const sat = gs.satellites.find((s) => s.id === completingSat.id)
+          const days = sat ? simDaysInOrbit(sat.record.commissionedAt, simTime) : 0
+          useGameStore.getState().recordContractPass(completingSat.id, `Trick-shot ×${trickShot} · SD ${days}`)
+        } else {
+          useGameStore.getState().recordContractPass(completingSat.id)
+        }
         // Last completion wins if multiple contracts complete in one eval tick.
         pendingCompletion = {
           contractId: c.id,
@@ -191,6 +199,11 @@ export const useContractStore = create<ContractState>((set, get) => ({
     const nonHistory = contracts.filter((c) => c.status === 'available' || c.status === 'active')
     const history = contracts.filter((c) => c.status === 'completed' || c.status === 'failed').slice(-10)
     const bounded = [...nonHistory, ...history]
+
+    // Consume maneuver grade/trick-shot once per tick, after all completions have read them.
+    if (pendingCompletion) {
+      useGameStore.getState().clearLastManeuver()
+    }
 
     if (completed.length || failed.length || staleDropped) {
       set({ contracts: bounded, ...(pendingCompletion ? { lastCompletion: pendingCompletion } : {}) })

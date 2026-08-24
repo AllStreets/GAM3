@@ -2,15 +2,9 @@
 
 import { useEffect, useCallback } from 'react'
 import { useGameStore } from '@/state/gameStore'
-import { CAPABILITY_LABEL, simDaysInOrbit } from '@/lib/satelliteMeta'
+import { CAPABILITY_LABEL, CAPABILITY_COLOR, simDaysInOrbit } from '@/lib/satelliteMeta'
 import { simNow } from '@/lib/simTime'
 import { Chip } from '@/components/ui/Chip'
-
-const CAPABILITY_COLOR: Record<string, string> = {
-  OPTICAL:  '#60a5fa',
-  RELAY:    '#4ade80',
-  THERMAL:  '#f87171',
-}
 
 interface SatelliteRecordCardProps {
   onClose: () => void

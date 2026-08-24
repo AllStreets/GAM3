@@ -2,6 +2,12 @@ export type Archetype = 'relief' | 'research' | 'defense'
 export interface Leaning { relief: number; research: number; defense: number }
 export const ZERO_LEANING: Leaning = { relief: 0, research: 0, defense: 0 }
 
+export const ARCHETYPE_COLOR: Record<Archetype, string> = {
+  relief:   '#ff9955',
+  research: '#45d8ff',
+  defense:  '#ff5c49',
+}
+
 const PRIORITY: Archetype[] = ['relief', 'research', 'defense']
 
 export function advanceLeaning(l: Leaning, tag: Archetype, weight = 1): Leaning {

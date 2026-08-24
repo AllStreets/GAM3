@@ -10,12 +10,13 @@ import { maxActiveContracts } from '@/lib/economy'
 import { CAPABILITY_LABEL } from '@/lib/satelliteMeta'
 import { audio } from '@/audio/AudioEngine'
 import type { Archetype } from '@/lib/archetype'
+import { ARCHETYPE_COLOR } from '@/lib/archetype'
 import { Chip } from '@/components/ui/Chip'
 
-const ARCHETYPE_STYLE: Record<Archetype, { label: string; color: string }> = {
-  relief:   { label: 'RELIEF',   color: '#4ade80' },
-  research: { label: 'RESEARCH', color: '#60a5fa' },
-  defense:  { label: 'DEFENSE',  color: '#f87171' },
+const ARCHETYPE_LABEL: Record<Archetype, string> = {
+  relief:   'RELIEF',
+  research: 'RESEARCH',
+  defense:  'DEFENSE',
 }
 
 function countdown(deadline: number, now: number): string {
@@ -62,14 +63,15 @@ export default function ContractsPanel() {
         {available.length > 0 && (
           <ul className="mb-2 space-y-1">
             {available.map((c) => {
-              const archStyle = ARCHETYPE_STYLE[c.archetype]
+              const archColor = ARCHETYPE_COLOR[c.archetype]
+              const archLabel = ARCHETYPE_LABEL[c.archetype]
               const capLabel = CAPABILITY_LABEL[c.preferredCapability]
               const isMatch = selectedCapability !== null && selectedCapability === c.preferredCapability
               return (
                 <li key={c.id} className="rounded border border-white/10 p-2">
                   <p className="mb-1 truncate font-semibold">{c.title}</p>
                   <p className="mb-1 flex items-center gap-1.5">
-                    <Chip color={archStyle.color}>{archStyle.label}</Chip>
+                    <Chip color={archColor}>{archLabel}</Chip>
                     <Chip className="opacity-60">{capLabel}</Chip>
                     {isMatch && (
                       <span className="text-[9px] text-yellow-400 opacity-80">★ match</span>

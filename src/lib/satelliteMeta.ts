@@ -12,6 +12,12 @@ export const CAPABILITY_LABEL: Record<Capability, string> = {
   thermal: 'THERMAL',
 }
 
+export const CAPABILITY_COLOR: Record<string, string> = {
+  OPTICAL: '#60a5fa',
+  RELAY:   '#4ade80',
+  THERMAL: '#f87171',
+}
+
 const SEED: Capability[] = ['imaging', 'imaging', 'comms', 'thermal', 'comms']
 
 export function seedCapability(index: number): Capability {

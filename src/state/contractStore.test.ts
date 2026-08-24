@@ -220,4 +220,50 @@ describe('contractStore', () => {
     expect(ev).not.toBeNull()
     expect(ev!.reliefImpact).toBeUndefined()
   })
+
+  it('Fix 3: trick-shot completion writes a notable-pass note containing "Trick-shot"', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // Simulate a trick-shot by injecting lastTrickShot into gameStore before evaluate.
+    useGameStore.setState({ lastTrickShot: { count: 3 } })
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon })])
+    useContractStore.getState().accept('c1')
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    const satAfter = useGameStore.getState().satellites.find((s) => s.id === sat.id)!
+    // The completing satellite should have a notable pass containing "Trick-shot"
+    expect(satAfter.record.notablePasses.some((p) => p.includes('Trick-shot'))).toBe(true)
+  })
+
+  it('Fix 3: non-trick-shot completion does not write a Trick-shot note', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // Ensure no trick-shot in state
+    useGameStore.setState({ lastTrickShot: null })
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon })])
+    useContractStore.getState().accept('c1')
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    const satAfter = useGameStore.getState().satellites.find((s) => s.id === sat.id)!
+    expect(satAfter.record.notablePasses.some((p) => p.includes('Trick-shot'))).toBe(false)
+  })
+
+  it('Fix 4: lastManeuver is null after evaluate consumes it via a completion', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // Pre-set a lastManeuver and lastTrickShot
+    useGameStore.setState({ lastManeuver: { grade: 'A', efficiency: 0.9, precision: 0.8, overall: 0.85 }, lastTrickShot: { count: 2 } })
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon })])
+    useContractStore.getState().accept('c1')
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    // After evaluate with a completion, both should be cleared
+    expect(useGameStore.getState().lastManeuver).toBeNull()
+    expect(useGameStore.getState().lastTrickShot).toBeNull()
+  })
+
+  it('Fix 4: lastManeuver is NOT cleared when no contract completes in the tick', () => {
+    // Set a lastManeuver, but run evaluate with no contract in play
+    useGameStore.setState({ lastManeuver: { grade: 'S', efficiency: 1, precision: 1, overall: 1 }, lastTrickShot: null })
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    // No completion → maneuver grade should still be there
+    expect(useGameStore.getState().lastManeuver).not.toBeNull()
+  })
 })

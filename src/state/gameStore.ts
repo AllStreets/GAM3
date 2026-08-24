@@ -115,6 +115,7 @@ interface GameState {
   recordContractPass(satId: string, note?: string): void
   bumpStreak(): void
   resetStreak(): void
+  clearLastManeuver(): void
   /** Check and possibly spawn a conjunction; supply a deterministic roll ∈ [0,1). */
   maybeSpawnConjunction(now: number, roll: number): void
   /** Clear the emergency when the burned sat has spent enough Δv. */
@@ -237,6 +238,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   bumpStreak: () => set((s) => ({ streak: s.streak + 1 })),
   resetStreak: () => set({ streak: 0 }),
+  clearLastManeuver: () => set({ lastManeuver: null, lastTrickShot: null }),
 
   refuelSatellite: (id) => {
     const sat = get().satellites.find((s) => s.id === id)
