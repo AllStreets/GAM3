@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import {
-  applyDeltaV, MS_TO_ER, type OrbitalElements,
+  applyDeltaV, MS_TO_ER, orbitalPeriod, type OrbitalElements,
 } from '@/lib/orbits'
 import { recordBurn, recordAbort } from '@/lib/profile'
 import { refuelPrice, SATELLITE_PRICE } from '@/lib/economy'
@@ -10,6 +10,9 @@ import {
   type Capability, type ServiceRecord,
   seedCapability, fillGapCapability, freshRecord,
 } from '@/lib/satelliteMeta'
+import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
+import { scoreManeuver, detectTrickShot, type ManeuverScore } from '@/lib/maneuverScore'
+import { useContractStore } from '@/state/contractStore'
 
 export interface Satellite {
   id: string
@@ -83,6 +86,9 @@ interface GameState {
   burnSession: BurnSession | null
   /** Non-reactive live burn telemetry — direct-mutated by the engine, polled by the overlay. */
   burnLive: { needle: number; progress: number; quality: number }
+  /** Transient post-burn scoring signals — not persisted, reset on resetForTest. */
+  lastManeuver: ManeuverScore | null
+  lastTrickShot: { count: number } | null
   select(id: string | null): void
   setBurnPlan(p: Partial<BurnPlan>): void
   resetBurnPlan(): void
@@ -105,6 +111,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   previewAt: 0,
   burnSession: null,
   burnLive: { needle: 0, progress: 0, quality: 1 },
+  lastManeuver: null,
+  lastTrickShot: null,
 
   select: (id) => set({ selectedId: id, burnPlan: { ...ZERO_PLAN } }),
 
@@ -149,12 +157,40 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!sat) { set({ burnSession: null }); return false }
     const elements = previewElements(sat, burnSession.plan, at)
     const spent = Math.min(sat.fuel, fuelCostWithQuality(burnSession.cost, quality))
+
+    // Compute maneuver score against the tracked/first active contract target.
+    const allContracts = useContractStore.getState().contracts
+    const activeContracts = allContracts.filter((c) => c.status === 'active')
+    const targetId = useContractStore.getState().targetId
+    const targetContract =
+      (targetId ? activeContracts.find((c) => c.id === targetId) : null) ??
+      activeContracts[0] ??
+      null
+
+    const windowSec = orbitalPeriod(elements.a) * 3
+    const closestKm = targetContract
+      ? closestApproach(elements, { lat: targetContract.lat, lon: targetContract.lon }, at, windowSec).closestKm
+      : 0
+
+    const maneuverScore = scoreManeuver({
+      dvNeeded: burnSession.cost,
+      dvSpent: spent,
+      closestKm,
+      radiusKm: COMPLETION_RADIUS_KM,
+    })
+
+    const allTargets = activeContracts.map((c) => ({ lat: c.lat, lon: c.lon }))
+    const trickResult = detectTrickShot({ elements, targets: allTargets, fromT: at, windowSec, radiusKm: COMPLETION_RADIUS_KM })
+    const lastTrickShot = trickResult.isTrickShot ? { count: trickResult.count } : null
+
     set({
       satellites: satellites.map((s) =>
         s.id === sat.id ? { ...s, elements, fuel: s.fuel - spent } : s,
       ),
       burnSession: null,
       burnPlan: { prograde: 0, normal: 0, radial: 0 },
+      lastManeuver: maneuverScore,
+      lastTrickShot,
     })
     recordBurn(burnSession.cost, quality)
     const live = get().burnLive
@@ -233,6 +269,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     clearKey(FLEET_KEY)
     const live = get().burnLive
     live.needle = 0; live.progress = 0; live.quality = 1
-    set({ satellites: seedFleet(), selectedId: null, burnPlan: { ...ZERO_PLAN }, previewAt: 0, burnSession: null })
+    set({ satellites: seedFleet(), selectedId: null, burnPlan: { ...ZERO_PLAN }, previewAt: 0, burnSession: null, lastManeuver: null, lastTrickShot: null })
   },
 }))

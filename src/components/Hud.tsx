@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import FleetPanel from '@/components/FleetPanel'
 import EventsPanel from '@/components/EventsPanel'
-import BurnOverlay from '@/components/BurnOverlay'
+import BurnOverlay, { BurnGradeReadout } from '@/components/BurnOverlay'
 import BriefingPanel from '@/components/BriefingPanel'
 import FoundingScreen from '@/components/FoundingScreen'
 import AgencyBar from '@/components/AgencyBar'
@@ -43,6 +43,7 @@ export default function Hud() {
       </div>
       <EventsPanel />
       <BurnOverlay />
+      <BurnGradeReadout />
       <BriefingPanel />
       <AgencyBar />
       <GuidanceHint />

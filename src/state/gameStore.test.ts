@@ -127,6 +127,33 @@ describe('burn session', () => {
     expect(useGameStore.getState().beginBurn()).toBe(true)
     expect(useGameStore.getState().beginBurn()).toBe(false)
   })
+
+  it('completeBurn sets lastManeuver with a valid grade (free-flight, no active contract)', () => {
+    const st = useGameStore.getState()
+    st.select(st.satellites[0].id)
+    st.setBurnPlan({ prograde: 40 })
+    useGameStore.getState().beginBurn()
+    expect(useGameStore.getState().completeBurn(500, 1)).toBe(true)
+    const lm = useGameStore.getState().lastManeuver
+    expect(lm).not.toBeNull()
+    expect(['S', 'A', 'B', 'C']).toContain(lm!.grade)
+    expect(lm!.efficiency).toBeGreaterThan(0)
+    expect(lm!.efficiency).toBeLessThanOrEqual(1)
+    // No active contract → closestKm=0 → precision=1 → graded on efficiency (perfect burn → S)
+    expect(lm!.precision).toBeCloseTo(1)
+    expect(lm!.grade).toBe('S')
+  })
+
+  it('resetForTest clears lastManeuver and lastTrickShot', () => {
+    const st = useGameStore.getState()
+    st.select(st.satellites[0].id)
+    st.setBurnPlan({ prograde: 40 })
+    useGameStore.getState().beginBurn()
+    useGameStore.getState().completeBurn(500, 1)
+    useGameStore.getState().resetForTest()
+    expect(useGameStore.getState().lastManeuver).toBeNull()
+    expect(useGameStore.getState().lastTrickShot).toBeNull()
+  })
 })
 
 import { useAgencyStore } from './agencyStore'

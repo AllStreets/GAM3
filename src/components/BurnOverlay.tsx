@@ -2,6 +2,68 @@
 
 import { useEffect, useState } from 'react'
 import { useGameStore } from '@/state/gameStore'
+import type { ManeuverScore } from '@/lib/maneuverScore'
+
+const GRADE_COLORS: Record<ManeuverScore['grade'], string> = {
+  S: '#bd93f9',
+  A: '#50fa7b',
+  B: '#ffb86b',
+  C: '#ff5555',
+}
+
+/** Shows GRADE + efficiency/precision bars for 2.5s after a burn completes. */
+export function BurnGradeReadout() {
+  const lastManeuver = useGameStore((s) => s.lastManeuver)
+  const lastTrickShot = useGameStore((s) => s.lastTrickShot)
+  const [visible, setVisible] = useState<ManeuverScore | null>(null)
+  const [trickShot, setTrickShot] = useState<{ count: number } | null>(null)
+
+  useEffect(() => {
+    if (!lastManeuver) return
+    setVisible(lastManeuver)
+    setTrickShot(lastTrickShot)
+    const id = setTimeout(() => { setVisible(null); setTrickShot(null) }, 2500)
+    return () => clearTimeout(id)
+  }, [lastManeuver, lastTrickShot])
+
+  if (!visible) return null
+
+  const color = GRADE_COLORS[visible.grade]
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-31 flex flex-col items-center justify-end pb-36 font-mono text-xs text-[var(--text)]">
+      <div className="w-[280px] space-y-2 rounded border border-white/20 bg-black/80 p-3 backdrop-blur">
+        <p className="flex items-center justify-between tracking-[0.3em] text-[11px]">
+          <span className="opacity-60">BURN GRADE</span>
+          <span className="text-base font-bold" style={{ color }}>{visible.grade}</span>
+        </p>
+        {/* Efficiency bar */}
+        <div>
+          <p className="mb-1 flex justify-between opacity-50 text-[9px] tracking-widest">
+            <span>EFFICIENCY</span><span>{Math.round(visible.efficiency * 100)}%</span>
+          </p>
+          <div className="h-1.5 w-full rounded bg-white/10">
+            <span className="block h-1.5 rounded bg-[#50fa7b] transition-all" style={{ width: `${visible.efficiency * 100}%` }} />
+          </div>
+        </div>
+        {/* Precision bar */}
+        <div>
+          <p className="mb-1 flex justify-between opacity-50 text-[9px] tracking-widest">
+            <span>PRECISION</span><span>{Math.round(visible.precision * 100)}%</span>
+          </p>
+          <div className="h-1.5 w-full rounded bg-white/10">
+            <span className="block h-1.5 rounded bg-[#bd93f9] transition-all" style={{ width: `${visible.precision * 100}%` }} />
+          </div>
+        </div>
+        {trickShot && (
+          <p className="text-center text-[9px] tracking-[0.25em] opacity-80" style={{ color: '#ffb86b' }}>
+            TRICK-SHOT ×{trickShot.count}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function BurnOverlay() {
   const burnSession = useGameStore((s) => s.burnSession)
