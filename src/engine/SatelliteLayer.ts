@@ -22,8 +22,18 @@ export class SatelliteLayer {
     const ghostGeom = new THREE.BufferGeometry()
     this.ghost = new THREE.LineLoop(
       ghostGeom,
-      new THREE.LineBasicMaterial({ color: GHOST, transparent: true, opacity: 0.85 }),
+      new THREE.LineBasicMaterial({
+        color: GHOST,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false,
+      }),
     )
+    // Draw the planned-orbit ring on top of everything so a course change reads instantly,
+    // even the arc that passes behind the globe.
+    this.ghost.renderOrder = 11
     this.ghost.visible = false
     this.group.add(this.ghost)
 
@@ -84,9 +94,15 @@ export class SatelliteLayer {
         new THREE.LineBasicMaterial({
           color: selected ? SELECTED : 0x45d8ff,
           transparent: true,
-          opacity: selected ? 0.85 : 0.35,
+          // The selected bird's orbit glows and draws over the globe (full ring visible) so
+          // the player can always see the course they're flying; others stay faint to reduce clutter.
+          opacity: selected ? 0.95 : 0.32,
+          blending: selected ? THREE.AdditiveBlending : THREE.NormalBlending,
+          depthTest: !selected,
+          depthWrite: !selected,
         }),
       )
+      ribbon.renderOrder = selected ? 10 : 0
       this.group.add(ribbon)
       this.ribbons.set(sat.id, ribbon)
     }
