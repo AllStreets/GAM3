@@ -3,7 +3,7 @@
 import { useAgencyStore } from '@/state/agencyStore'
 import { useGameStore } from '@/state/gameStore'
 import { Emblem } from '@/components/Emblem'
-import { rankTitle } from '@/lib/economy'
+import { agencyTitle } from '@/state/agencyStore'
 
 export default function AgencyBar() {
   const founded = useAgencyStore((s) => s.founded)
@@ -25,7 +25,7 @@ export default function AgencyBar() {
         </span>
         <span className="h-4 w-px bg-white/15" />
         <span className="tabular-nums" style={{ color }}>§{funding.toLocaleString()}</span>
-        <span className="tabular-nums opacity-80">REP {reputation} · {rankTitle(reputation)}</span>
+        <span className="tabular-nums opacity-80">REP {reputation} · {agencyTitle()}</span>
         <span className="tabular-nums opacity-60">FLEET {fleet}</span>
       </div>
     </div>
