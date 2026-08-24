@@ -1,6 +1,7 @@
 import type { Contract } from '@/state/contractStore'
 import type { WorldEvent } from '@/lib/worldEvents'
 import { contractReward, contractDeadline } from '@/lib/economy'
+import { archetypeForKind, capabilityForKind } from '@/lib/contractMeta'
 
 export interface BriefingMission {
   title: string
@@ -19,6 +20,8 @@ function contractForEvent(title: string, ev: WorldEvent, simNow: number, periodS
     deadline: contractDeadline(simNow, periodSec),
     reward: contractReward(ev.severity),
     status: 'available',
+    archetype: archetypeForKind(ev.kind),
+    preferredCapability: capabilityForKind(ev.kind),
   }
 }
 

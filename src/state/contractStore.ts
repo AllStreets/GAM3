@@ -1,10 +1,14 @@
 import { create } from 'zustand'
 import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 import { useAgencyStore } from '@/state/agencyStore'
+import { useGameStore } from '@/state/gameStore'
 import { maxActiveContracts } from '@/lib/economy'
 import { groundDistanceKm, COMPLETION_RADIUS_KM } from '@/lib/intercept'
 import { simNow } from '@/lib/simTime'
 import type { Satellite } from '@/state/gameStore'
+import type { Archetype } from '@/lib/archetype'
+import type { Capability } from '@/lib/satelliteMeta'
+import { archetypeForKind, capabilityForKind, matchBonusFunding } from '@/lib/contractMeta'
 
 const KEY = 'hyperion-contracts-v1'
 
@@ -21,6 +25,11 @@ export interface Contract {
   deadline: number
   reward: { funding: number; reputation: number }
   status: ContractStatus
+  archetype: Archetype
+  preferredCapability: Capability
+  /** Transient — populated on completion, not persisted. */
+  completedBy?: string
+  matched?: boolean
 }
 
 interface Persisted {
@@ -102,13 +111,17 @@ export const useContractStore = create<ContractState>((set, get) => ({
     const contracts = afterExpiry.map((c) => {
       if (c.status !== 'active') return c
       // Completion: any satellite's sub-point within the imaging radius right now.
-      const hit = satellites.some(
+      const completingSat = satellites.find(
         (sat) => groundDistanceKm(sat.elements, simTime, { lat: c.lat, lon: c.lon }) <= COMPLETION_RADIUS_KM,
       )
-      if (hit) {
-        agency.addFunding(c.reward.funding)
+      if (completingSat) {
+        const matched = completingSat.capability === c.preferredCapability
+        let funding = matchBonusFunding(c.reward.funding, matched)
+        agency.addFunding(funding)
         agency.addReputation(c.reward.reputation)
-        const done = { ...c, status: 'completed' as const }
+        useGameStore.getState().recordContractPass(completingSat.id)
+        useAgencyStore.getState().advanceArchetype(c.archetype)
+        const done = { ...c, status: 'completed' as const, completedBy: completingSat.id, matched }
         completed.push(done)
         return done
       }
@@ -133,7 +146,18 @@ export const useContractStore = create<ContractState>((set, get) => ({
     return { completed, failed }
   },
 
-  hydrate: () => set(loadJSON<Persisted>(KEY, DEFAULTS)),
+  hydrate: () => {
+    const data = loadJSON<Persisted>(KEY, DEFAULTS)
+    const backfilled = {
+      ...data,
+      contracts: data.contracts.map((c) => ({
+        ...c,
+        archetype: c.archetype ?? archetypeForKind(c.kind),
+        preferredCapability: c.preferredCapability ?? capabilityForKind(c.kind),
+      })),
+    }
+    set(backfilled)
+  },
 
   resetForTest: () => {
     clearKey(KEY)
