@@ -8,13 +8,14 @@ import { simNow } from '@/lib/simTime'
 import { profileSummary, recordSession } from '@/lib/profile'
 import { audio } from '@/audio/AudioEngine'
 import { useContractStore } from '@/state/contractStore'
-import { contractsFromBriefing, seedContracts } from '@/lib/contractsFromBriefing'
+import { contractsFromBriefing, seedContracts, type BriefingMission } from '@/lib/contractsFromBriefing'
+import { useAgencyStore, agencyArchetype } from '@/state/agencyStore'
 
 interface Briefing {
   headline: string
   situation: string
   advisory: string
-  missions: Array<{ title: string; eventId: string; objective: string }>
+  missions: BriefingMission[]
 }
 
 export default function BriefingPanel() {
@@ -38,6 +39,7 @@ export default function BriefingPanel() {
       }
     })
 
+    const agencyState = useAgencyStore.getState()
     void fetch('/api/briefing', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -47,6 +49,10 @@ export default function BriefingPanel() {
         events: events.slice(0, 25).map((e) => ({
           id: e.id, kind: e.kind, title: e.title, severity: e.severity, time: e.time,
         })),
+        agency: {
+          name: agencyState.name,
+          archetype: agencyArchetype(),
+        },
       }),
     })
       .then((r) => r.json())
