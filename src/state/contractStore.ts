@@ -14,6 +14,24 @@ const KEY = 'hyperion-contracts-v1'
 
 export type ContractStatus = 'available' | 'active' | 'completed' | 'failed'
 
+export interface CompletionEvent {
+  contractId: string
+  title: string
+  lat: number
+  lon: number
+  funding: number
+  reputation: number
+  matched: boolean
+  archetype: Archetype
+  completedBy: string
+  streak: number
+  multiplier: number
+  grade?: 'S' | 'A' | 'B' | 'C'
+  trickShot?: number
+  /** Left undefined here; T6 will populate for relief contracts. */
+  reliefImpact?: string
+}
+
 export interface Contract {
   id: string
   eventId: string
@@ -40,10 +58,13 @@ interface Persisted {
 const DEFAULTS: Persisted = { contracts: [], targetId: null }
 
 interface ContractState extends Persisted {
+  /** Transient — set on completion, cleared by the overlay after display. Not persisted. */
+  lastCompletion: CompletionEvent | null
   setAvailable(next: Contract[]): void
   accept(id: string): boolean
   setTarget(id: string | null): void
   evaluate(satellites: Satellite[], simTime: number): { completed: Contract[]; failed: Contract[] }
+  clearCompletion(): void
   hydrate(): void
   resetForTest(): void
 }
@@ -55,6 +76,7 @@ function save(get: () => ContractState) {
 
 export const useContractStore = create<ContractState>((set, get) => ({
   ...DEFAULTS,
+  lastCompletion: null,
 
   setAvailable: (next) => {
     const existingMap = new Map(get().contracts.map((c) => [c.id, c]))
@@ -108,6 +130,8 @@ export const useContractStore = create<ContractState>((set, get) => ({
     )
     const staleDropped = afterExpiry.length !== get().contracts.length
 
+    let pendingCompletion: CompletionEvent | null = null
+
     const contracts = afterExpiry.map((c) => {
       if (c.status !== 'active') return c
       // Completion: any satellite's sub-point within the imaging radius right now.
@@ -117,16 +141,43 @@ export const useContractStore = create<ContractState>((set, get) => ({
       if (completingSat) {
         const matched = completingSat.capability === c.preferredCapability
         let funding = matchBonusFunding(c.reward.funding, matched)
+        // Operational-tempo streak multiplier — bump streak first so the new value
+        // is reflected in the event. Single addFunding call below (source of truth).
+        useGameStore.getState().bumpStreak()
+        const streak = useGameStore.getState().streak
+        const multiplier = 1 + Math.min(0.5, 0.1 * (streak - 1))
+        funding = Math.round(funding * multiplier)
         agency.addFunding(funding)
         agency.addReputation(c.reward.reputation)
         useGameStore.getState().recordContractPass(completingSat.id)
         useAgencyStore.getState().advanceArchetype(c.archetype)
+        // Pull last maneuver/trick-shot from gameStore for the cinematic event.
+        const gs = useGameStore.getState()
+        const grade = gs.lastManeuver?.grade ?? undefined
+        const trickShot = gs.lastTrickShot?.count ?? undefined
+        // Last completion wins if multiple contracts complete in one eval tick.
+        pendingCompletion = {
+          contractId: c.id,
+          title: c.title,
+          lat: c.lat,
+          lon: c.lon,
+          funding,
+          reputation: c.reward.reputation,
+          matched,
+          archetype: c.archetype,
+          completedBy: completingSat.id,
+          streak,
+          multiplier,
+          grade,
+          trickShot,
+        }
         const done = { ...c, status: 'completed' as const, completedBy: completingSat.id, matched }
         completed.push(done)
         return done
       }
       if (simTime > c.deadline) {
         agency.addReputation(-5)
+        useGameStore.getState().resetStreak()
         const bad = { ...c, status: 'failed' as const }
         failed.push(bad)
         return bad
@@ -140,11 +191,13 @@ export const useContractStore = create<ContractState>((set, get) => ({
     const bounded = [...nonHistory, ...history]
 
     if (completed.length || failed.length || staleDropped) {
-      set({ contracts: bounded })
+      set({ contracts: bounded, ...(pendingCompletion ? { lastCompletion: pendingCompletion } : {}) })
       save(get)
     }
     return { completed, failed }
   },
+
+  clearCompletion: () => set({ lastCompletion: null }),
 
   hydrate: () => {
     const data = loadJSON<Persisted>(KEY, DEFAULTS)
@@ -161,6 +214,6 @@ export const useContractStore = create<ContractState>((set, get) => ({
 
   resetForTest: () => {
     clearKey(KEY)
-    set({ ...DEFAULTS })
+    set({ ...DEFAULTS, lastCompletion: null })
   },
 }))

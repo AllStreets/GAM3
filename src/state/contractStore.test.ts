@@ -126,6 +126,61 @@ describe('contractStore', () => {
     expect(completed[0].matched).toBe(true)
   })
 
+  it('two consecutive completions raise streak to 2 and set multiplier > 1 on the second', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+
+    // First completion — streak becomes 1, multiplier = 1.0
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon })])
+    useContractStore.getState().accept('c1')
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(useGameStore.getState().streak).toBe(1)
+    const firstEvent = useContractStore.getState().lastCompletion
+    expect(firstEvent).not.toBeNull()
+    expect(firstEvent!.streak).toBe(1)
+    expect(firstEvent!.multiplier).toBe(1.0)
+
+    // Reset contracts but NOT gameStore streak (streak persists across completions).
+    useContractStore.getState().resetForTest()
+    useContractStore.getState().setAvailable([mk({ id: 'c2', lat: sp.lat, lon: sp.lon })])
+    useContractStore.getState().accept('c2')
+
+    const beforeFunding = useAgencyStore.getState().funding
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+
+    // Second completion — streak should now be 2, multiplier > 1.
+    expect(useGameStore.getState().streak).toBe(2)
+    const secondEvent = useContractStore.getState().lastCompletion
+    expect(secondEvent).not.toBeNull()
+    expect(secondEvent!.streak).toBe(2)
+    expect(secondEvent!.multiplier).toBeGreaterThan(1)
+
+    // The awarded funding reflects the multiplier (single award, already applied).
+    const expectedBase = matchBonusFunding(200, true) // matched, base bonus applied
+    const expectedMultiplied = Math.round(expectedBase * secondEvent!.multiplier)
+    expect(useAgencyStore.getState().funding - beforeFunding).toBe(expectedMultiplied)
+  })
+
+  it('a failure resets the streak', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+
+    // Complete one contract to build streak.
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon })])
+    useContractStore.getState().accept('c1')
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(useGameStore.getState().streak).toBe(1)
+
+    // Fail a different contract (unreachable target, past deadline).
+    useContractStore.getState().setAvailable([mk({ id: 'c2', lat: 89, lon: 0 })])
+    useContractStore.getState().accept('c2')
+    useContractStore.setState((s) => ({
+      contracts: s.contracts.map((c) => c.id === 'c2' ? { ...c, deadline: 10 } : c),
+    }))
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 999)
+    expect(useGameStore.getState().streak).toBe(0)
+  })
+
   it('hydrate backfills archetype and preferredCapability from kind', () => {
     // Simulate an old persisted contract without the new fields
     saveJSON('hyperion-contracts-v1', {

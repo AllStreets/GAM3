@@ -11,6 +11,7 @@ import ContractsPanel from '@/components/ContractsPanel'
 import InterceptReadout from '@/components/InterceptReadout'
 import GuidePanel from '@/components/GuidePanel'
 import GuidanceHint from '@/components/GuidanceHint'
+import CompletionCinematic from '@/components/CompletionCinematic'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -50,6 +51,7 @@ export default function Hud() {
       <InterceptReadout />
       <GuidePanel />
       <FoundingScreen />
+      <CompletionCinematic />
     </div>
   )
 }

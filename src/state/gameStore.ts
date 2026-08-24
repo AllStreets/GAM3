@@ -89,6 +89,8 @@ interface GameState {
   /** Transient post-burn scoring signals — not persisted, reset on resetForTest. */
   lastManeuver: ManeuverScore | null
   lastTrickShot: { count: number } | null
+  /** Operational-tempo streak — consecutive contract completions; reset on failure. Not persisted. */
+  streak: number
   select(id: string | null): void
   setBurnPlan(p: Partial<BurnPlan>): void
   resetBurnPlan(): void
@@ -101,6 +103,8 @@ interface GameState {
   buySatellite(): boolean
   hydrate(): void
   recordContractPass(satId: string, note?: string): void
+  bumpStreak(): void
+  resetStreak(): void
   resetForTest(): void
 }
 
@@ -113,6 +117,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   burnLive: { needle: 0, progress: 0, quality: 1 },
   lastManeuver: null,
   lastTrickShot: null,
+  streak: 0,
 
   select: (id) => set({ selectedId: id, burnPlan: { ...ZERO_PLAN } }),
 
@@ -201,6 +206,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   abortBurn: () => { recordAbort(); set({ burnSession: null }) },
 
+  bumpStreak: () => set((s) => ({ streak: s.streak + 1 })),
+  resetStreak: () => set({ streak: 0 }),
+
   refuelSatellite: (id) => {
     const sat = get().satellites.find((s) => s.id === id)
     if (!sat) return false
@@ -269,6 +277,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     clearKey(FLEET_KEY)
     const live = get().burnLive
     live.needle = 0; live.progress = 0; live.quality = 1
-    set({ satellites: seedFleet(), selectedId: null, burnPlan: { ...ZERO_PLAN }, previewAt: 0, burnSession: null, lastManeuver: null, lastTrickShot: null })
+    set({ satellites: seedFleet(), selectedId: null, burnPlan: { ...ZERO_PLAN }, previewAt: 0, burnSession: null, lastManeuver: null, lastTrickShot: null, streak: 0 })
   },
 }))
