@@ -73,7 +73,7 @@ test('fleet panel selects a satellite and plans a burn', async ({ page }) => {
 
 test('events panel shows live world events and focuses one', async ({ page }) => {
   await foundAgency(page)
-  await expect(page.getByText('EVENTS')).toBeVisible()
+  await expect(page.getByText('EVENTS', { exact: true })).toBeVisible()
   // Live feeds populate within the polling fetch; allow generous time.
   const firstEvent = page.locator('aside').filter({ hasText: 'EVENTS' }).locator('li button').first()
   await expect(firstEvent).toBeVisible({ timeout: 20_000 })
@@ -106,4 +106,11 @@ test('found agency, briefing yields contracts, accept one', async ({ page }) => 
   await accept.click()
   // An active contract now shows a T- countdown.
   await expect(page.getByText(/T-/)).toBeVisible()
+  // Guidance nudge appears telling the player the next step.
+  await expect(page.getByText(/Select a satellite|Drag NORMAL|IGNITE/)).toBeVisible({ timeout: 10_000 })
+})
+
+test('events panel is collapsed by default with a show-all toggle', async ({ page }) => {
+  await foundAgency(page)
+  await expect(page.getByRole('button', { name: /Show all \d+ events/ })).toBeVisible({ timeout: 20_000 })
 })
