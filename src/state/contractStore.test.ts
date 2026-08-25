@@ -266,4 +266,20 @@ describe('contractStore', () => {
     // No completion → maneuver grade should still be there
     expect(useGameStore.getState().lastManeuver).not.toBeNull()
   })
+
+  it('addContract appends as available', () => {
+    const c = mk({ id: 'place-0-0-1000', status: 'available' })
+    useContractStore.getState().addContract(c)
+    const cs = useContractStore.getState().contracts
+    expect(cs).toHaveLength(1)
+    expect(cs[0].id).toBe('place-0-0-1000')
+    expect(cs[0].status).toBe('available')
+  })
+
+  it('addContract dedupes by id — second call is a no-op', () => {
+    const c = mk({ id: 'place-0-0-1000', status: 'available' })
+    useContractStore.getState().addContract(c)
+    useContractStore.getState().addContract(c)
+    expect(useContractStore.getState().contracts).toHaveLength(1)
+  })
 })

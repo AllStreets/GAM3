@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { usePlaceStore } from '@/state/placeStore'
 import { useWorldStore } from '@/state/worldStore'
-import { useAgencyStore } from '@/state/agencyStore'
+import { useAgencyStore, agencyArchetype } from '@/state/agencyStore'
+import { useContractStore } from '@/state/contractStore'
 import { nearestCity, placeLabel } from '@/lib/nearestCity'
 import { greatCircleKm } from '@/lib/geo'
 import { archetypeForKind, capabilityForKind } from '@/lib/contractMeta'
@@ -11,6 +12,9 @@ import { CAPABILITY_LABEL } from '@/lib/satelliteMeta'
 import { ARCHETYPE_COLOR } from '@/lib/archetype'
 import { Chip } from '@/components/ui/Chip'
 import type { PlaceImage } from '@/lib/placeImage'
+import { buildPlaceContract } from '@/lib/placeContract'
+import { simNow } from '@/lib/simTime'
+import { orbitalPeriod, ER_KM } from '@/lib/orbits'
 
 const ARCHETYPE_LABEL: Record<string, string> = {
   relief: 'RELIEF',
@@ -47,6 +51,10 @@ export default function PlaceCard() {
   const events = useWorldStore((s) => s.events)
   const cardRef = useRef<HTMLDivElement>(null)
 
+  // ── Contract tasking state ─────────────────────────────────────────────────
+  const [taskingInFlight, setTaskingInFlight] = useState(false)
+  const [taskingConfirm, setTaskingConfirm] = useState<string | null>(null)
+
   // ── Place image state ──────────────────────────────────────────────────────
   const [placeImage, setPlaceImage] = useState<PlaceImage | null>(null)
   const [imgError, setImgError] = useState(false)
@@ -73,8 +81,12 @@ export default function PlaceCard() {
     if (!place) {
       setPlaceImage(null)
       setImgError(false)
+      setTaskingConfirm(null)
+      setTaskingInFlight(false)
       return
     }
+    setTaskingConfirm(null)
+    setTaskingInFlight(false)
     const id = ++fetchIdRef.current
     setPlaceImage(null)
     setImgError(false)
@@ -140,6 +152,56 @@ export default function PlaceCard() {
     focusReveal(lat, lon, label)
     clear()
   }
+
+  const handleTaskContract = useCallback(async () => {
+    if (taskingInFlight) return
+    setTaskingInFlight(true)
+    setTaskingConfirm(null)
+
+    try {
+      const res = await fetch('/api/place-contract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lat,
+          lon,
+          placeName: label,
+          nearbyEvents: nearby.map((ev) => ({ kind: ev.kind, title: ev.title, severity: ev.severity })),
+          agency: { name: useAgencyStore.getState().name, archetype: agencyArchetype() },
+        }),
+      })
+
+      const data = await res.json() as {
+        source: 'ai' | 'fallback'
+        mission: { title: string; objective: string; archetype: 'relief' | 'research' | 'defense'; preferredCapability: 'imaging' | 'comms' | 'thermal' }
+      }
+
+      const maxNearbySeverity = nearby.length > 0
+        ? Math.max(...nearby.map((ev) => ev.severity))
+        : 0.5
+
+      // LEO 500 km reference period
+      const periodSec = orbitalPeriod((ER_KM + 500) / ER_KM)
+
+      const contract = buildPlaceContract({
+        ...data.mission,
+        lat,
+        lon,
+        placeName: label,
+        severity: maxNearbySeverity,
+        simNow: simNow(),
+        periodSec,
+      })
+
+      useContractStore.getState().addContract(contract)
+      useContractStore.getState().setTarget(contract.id)
+      setTaskingConfirm('Contract added → CONTRACTS')
+    } catch {
+      setTaskingConfirm('Tasking failed — try again')
+    } finally {
+      setTaskingInFlight(false)
+    }
+  }, [taskingInFlight, lat, lon, label, nearby])
 
   return (
     <div
@@ -237,11 +299,19 @@ export default function PlaceCard() {
           FOCUS / ZOOM IN
         </button>
         <button
-          disabled
-          className="w-full rounded border border-white/10 py-1.5 text-[10px] tracking-[0.2em] opacity-30 uppercase cursor-not-allowed"
+          onClick={() => void handleTaskContract()}
+          disabled={taskingInFlight}
+          className={`w-full rounded border py-1.5 text-[10px] tracking-[0.2em] uppercase transition ${
+            taskingInFlight
+              ? 'border-white/10 opacity-30 cursor-not-allowed'
+              : 'border-[var(--accent)]/30 text-[var(--accent)]/80 hover:bg-[var(--accent)]/10 hover:border-[var(--accent)]/60 cursor-pointer'
+          }`}
         >
-          TASK CONTRACT HERE
+          {taskingInFlight ? 'TASKING…' : 'TASK CONTRACT HERE'}
         </button>
+        {taskingConfirm && (
+          <p className="text-center text-[9px] tracking-[0.2em] text-[var(--accent)] opacity-70 uppercase">{taskingConfirm}</p>
+        )}
         <button
           disabled
           className="w-full rounded border border-white/10 py-1.5 text-[10px] tracking-[0.2em] opacity-30 uppercase cursor-not-allowed"
