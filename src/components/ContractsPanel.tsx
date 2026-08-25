@@ -70,6 +70,9 @@ export default function ContractsPanel() {
               return (
                 <li key={c.id} className="rounded border border-white/10 p-2">
                   <p className="mb-1 truncate font-semibold">{c.title}</p>
+                  {c.objective && (
+                    <p className="mb-1 text-[9px] leading-relaxed opacity-50 italic line-clamp-2">{c.objective}</p>
+                  )}
                   <p className="mb-1 flex items-center gap-1.5">
                     <Chip color={archColor}>{archLabel}</Chip>
                     <Chip className="opacity-60">{capLabel}</Chip>

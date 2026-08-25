@@ -6,14 +6,16 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { FilmPass } from 'three/addons/postprocessing/FilmPass.js'
 import { createEarthMaterial } from '@/engine/earthMaterial'
 import { createAtmosphereMaterial } from '@/engine/atmosphereMaterial'
-import { EARTH_RADIUS, latLonToVector3, subsolarPoint } from '@/lib/geo'
+import { EARTH_RADIUS, latLonToVector3, subsolarPoint, vector3ToLatLon } from '@/lib/geo'
 import { SatelliteLayer } from '@/engine/SatelliteLayer'
 import { EventLayer } from '@/engine/EventLayer'
 import { ContractLayer } from '@/engine/ContractLayer'
 import { CompletionFx } from '@/engine/CompletionFx'
+import { PlaceMarker } from '@/engine/PlaceMarker'
 import { simNow } from '@/lib/simTime'
 import { useGameStore } from '@/state/gameStore'
 import { useAgencyStore } from '@/state/agencyStore'
+import { usePlaceStore } from '@/state/placeStore'
 import { useContractStore } from '@/state/contractStore'
 import { useWorldStore } from '@/state/worldStore'
 import { BurnDirector } from '@/engine/BurnDirector'
@@ -45,10 +47,15 @@ export class GlobeEngine {
   private eventLayer: EventLayer
   private contractLayer = new ContractLayer()
   private worldUnsub?: () => void
+  private placeUnsub?: () => void
   private flight: { from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
+  private cityReveal: { lat: number; lon: number; from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
+  /** Ease camera back out after a city reveal is dismissed. */
+  private revealExit: { from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
   private pointerDown: { x: number; y: number } | null = null
   private burnDirector = new BurnDirector()
   private completionFx = new CompletionFx()
+  private placeMarker = new PlaceMarker()
   private lastSeenCompletionId: string | null = null
   private lastElapsed = 0
   private lastEmergencyTick = -1e9
@@ -133,12 +140,33 @@ export class GlobeEngine {
 
     this.scene.add(this.contractLayer.group)
     this.scene.add(this.completionFx.group)
+    this.scene.add(this.placeMarker.group)
 
     this.worldUnsub = useWorldStore.subscribe((state, prev) => {
       if (state.focusedId && state.focusedId !== prev.focusedId) {
         const ev = state.events.find((e) => e.id === state.focusedId)
         if (ev) this.flyTo(ev.lat, ev.lon)
       }
+    })
+
+    // Subscribe to place reveal: push camera in when reveal activates, restore controls when cleared.
+    let prevReveal = usePlaceStore.getState().reveal
+    this.placeUnsub = usePlaceStore.subscribe((state) => {
+      const reveal = state.reveal
+      if (reveal && !prevReveal) {
+        // Reveal just activated — push camera toward the city.
+        this.revealTo(reveal.lat, reveal.lon)
+      } else if (!reveal && prevReveal) {
+        // Reveal cleared — ease camera back out to a comfortable orbit distance.
+        const from = this.camera.position.clone()
+        const dir = from.clone().normalize()
+        // Target: same direction but at 2.6R (above minDistance of 1.4R).
+        const to = dir.multiplyScalar(EARTH_RADIUS * 2.6)
+        this.cityReveal = null
+        this.revealExit = { from, to, start: -1 }
+        // Controls re-enabled after the exit ease completes (see update()).
+      }
+      prevReveal = reveal
     })
 
     canvas.addEventListener('pointerdown', this.onPointerDown)
@@ -176,7 +204,20 @@ export class GlobeEngine {
     const raycaster = new THREE.Raycaster()
     raycaster.setFromCamera(ndc, this.camera)
     const id = this.satLayer.pickSatelliteId(raycaster)
-    useGameStore.getState().select(id)
+    if (id) {
+      useGameStore.getState().select(id)
+      return
+    }
+    // No satellite hit — try the globe surface and open a place inspect.
+    if (useAgencyStore.getState().founded && !useGameStore.getState().burnSession) {
+      const hit = raycaster.intersectObject(this.earth, false)[0]
+      if (hit) {
+        const { lat, lon } = vector3ToLatLon(hit.point)
+        usePlaceStore.getState().inspect(lat, lon)
+        return
+      }
+    }
+    useGameStore.getState().select(null) // empty space → deselect
   }
 
   private buildStarfield(): THREE.Points {
@@ -224,6 +265,17 @@ export class GlobeEngine {
       ;(this.atmosphereMaterial.uniforms.sunDirection.value as THREE.Vector3).copy(dir)
     }
     this.sunLight.position.copy(dir).multiplyScalar(10)
+  }
+
+  /**
+   * Push the camera in from orbit to a close viewing distance above (lat, lon).
+   * Called by the placeStore subscription when reveal activates.
+   */
+  private revealTo(lat: number, lon: number) {
+    const from = this.camera.position.clone()
+    // Surface-normal direction toward the target point, scaled to a close radius.
+    const to = latLonToVector3(lat, lon, 1).normalize().multiplyScalar(EARTH_RADIUS * 1.25)
+    this.cityReveal = { lat, lon, from, to, start: -1 }
   }
 
   /** Ease the camera so it looks down on (lat, lon), preserving current distance. */
@@ -304,6 +356,33 @@ export class GlobeEngine {
     }
     // --- End completion chase-lock ---
 
+    // ── City reveal push-in (below burn chase + completion chase; never fights either) ──
+    if (this.cityReveal && !this.burnDirector.active && !this.completionFx.active) {
+      if (this.cityReveal.start < 0) this.cityReveal.start = elapsedSeconds
+      const revT = Math.min(1, (elapsedSeconds - this.cityReveal.start) / 2.0)
+      const ease = 1 - Math.pow(1 - revT, 3) // cubic ease-out
+      this.camera.position.lerpVectors(this.cityReveal.from, this.cityReveal.to, ease)
+      this.camera.lookAt(0, 0, 0)
+      this.controls.enabled = false
+      // When done, park at the close position — leave cityReveal set until clearReveal().
+    }
+    // ── End city reveal push-in ──
+
+    // ── City reveal exit — ease back out to comfortable orbit after dismiss ──
+    if (this.revealExit && !this.burnDirector.active && !this.completionFx.active && !this.cityReveal) {
+      if (this.revealExit.start < 0) this.revealExit.start = elapsedSeconds
+      const exitT = Math.min(1, (elapsedSeconds - this.revealExit.start) / 1.0)
+      const ease = 1 - Math.pow(1 - exitT, 3) // cubic ease-out, ~1s
+      this.camera.position.lerpVectors(this.revealExit.from, this.revealExit.to, ease)
+      this.camera.lookAt(0, 0, 0)
+      this.controls.enabled = false
+      if (exitT >= 1) {
+        this.revealExit = null
+        this.controls.enabled = true
+      }
+    }
+    // ── End city reveal exit ──
+
     // ── Emergency spawn + expiry (throttled once per sim-minute = 60 sim-sec) ──
     // Only while founded — never over the founding screen. The clock (re)starts each
     // session so the first conjunction is a full min-gap into play, never on load.
@@ -331,6 +410,7 @@ export class GlobeEngine {
     this.satLayer.update(simNow())
     this.eventLayer.update(elapsedSeconds)
     this.contractLayer.update(simNow())
+    this.placeMarker.update()
     if (this.burnDirector.shake > 0.001) {
       this.camera.position.x += (Math.random() - 0.5) * this.burnDirector.shake * 0.012
       this.camera.position.y += (Math.random() - 0.5) * this.burnDirector.shake * 0.012
@@ -391,8 +471,10 @@ export class GlobeEngine {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.worldUnsub?.()
+    this.placeUnsub?.()
     this.burnDirector.dispose()
     this.completionFx.dispose()
+    this.placeMarker.dispose()
     this.contractLayer.dispose()
     this.eventLayer.dispose()
     this.satLayer.dispose()

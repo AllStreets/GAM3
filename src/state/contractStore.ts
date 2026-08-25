@@ -38,6 +38,8 @@ export interface Contract {
   id: string
   eventId: string
   title: string
+  /** Optional narrative objective written by AI or fallback; shown in ContractsPanel. */
+  objective?: string
   kind: string
   lat: number
   lon: number
@@ -63,6 +65,7 @@ interface ContractState extends Persisted {
   /** Transient — set on completion, cleared by the overlay after display. Not persisted. */
   lastCompletion: CompletionEvent | null
   setAvailable(next: Contract[]): void
+  addContract(c: Contract): void
   accept(id: string): boolean
   setTarget(id: string | null): void
   evaluate(satellites: Satellite[], simTime: number): { completed: Contract[]; failed: Contract[] }
@@ -98,6 +101,13 @@ export const useContractStore = create<ContractState>((set, get) => ({
     if (fresh.length === 0 && !changed) return
     const updated = Array.from(existingMap.values())
     set({ contracts: [...updated, ...fresh] })
+    save(get)
+  },
+
+  addContract: (c) => {
+    const existing = get().contracts
+    if (existing.some((x) => x.id === c.id)) return
+    set({ contracts: [...existing, { ...c, status: 'available' as const }] })
     save(get)
   },
 
