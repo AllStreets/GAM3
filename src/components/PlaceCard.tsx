@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { usePlaceStore } from '@/state/placeStore'
 import { useWorldStore } from '@/state/worldStore'
 import { useAgencyStore } from '@/state/agencyStore'
@@ -10,6 +10,7 @@ import { archetypeForKind, capabilityForKind } from '@/lib/contractMeta'
 import { CAPABILITY_LABEL } from '@/lib/satelliteMeta'
 import { ARCHETYPE_COLOR } from '@/lib/archetype'
 import { Chip } from '@/components/ui/Chip'
+import type { PlaceImage } from '@/lib/placeImage'
 
 const ARCHETYPE_LABEL: Record<string, string> = {
   relief: 'RELIEF',
@@ -45,6 +46,40 @@ export default function PlaceCard() {
   const founded = useAgencyStore((s) => s.founded)
   const events = useWorldStore((s) => s.events)
   const cardRef = useRef<HTMLDivElement>(null)
+
+  // ── Place image state ──────────────────────────────────────────────────────
+  const [placeImage, setPlaceImage] = useState<PlaceImage | null>(null)
+  const [imgError, setImgError] = useState(false)
+
+  // Fetch image whenever place changes; guard against races with a request ID
+  const fetchIdRef = useRef(0)
+
+  const fetchPlaceImage = useCallback(async (lat: number, lon: number, id: number) => {
+    try {
+      const res = await fetch(`/api/place-image?lat=${lat}&lon=${lon}`)
+      if (!res.ok) return
+      const data = (await res.json()) as PlaceImage
+      // Only apply if this is still the latest request
+      if (fetchIdRef.current === id) {
+        setPlaceImage(data)
+        setImgError(false)
+      }
+    } catch {
+      // Network error — leave previous image in place (or null on first load)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!place) {
+      setPlaceImage(null)
+      setImgError(false)
+      return
+    }
+    const id = ++fetchIdRef.current
+    setPlaceImage(null)
+    setImgError(false)
+    void fetchPlaceImage(place.lat, place.lon, id)
+  }, [place, fetchPlaceImage])
 
   // ESC to close
   useEffect(() => {
@@ -133,10 +168,35 @@ export default function PlaceCard() {
 
       <div className="my-2 h-px bg-white/10" />
 
-      {/* Image placeholder (Task 3 fills) */}
-      <div className="mb-3 flex h-24 w-full items-center justify-center rounded border border-white/10 bg-white/5 text-[9px] tracking-[0.3em] opacity-40 uppercase">
-        IMAGERY —
-      </div>
+      {/* Place image */}
+      {placeImage && placeImage.source !== 'none' && !imgError ? (
+        <div className="mb-3">
+          <div className="relative h-24 w-full overflow-hidden rounded border border-white/10">
+            <img
+              src={placeImage.url}
+              alt={placeImage.title}
+              loading="lazy"
+              className="h-full w-full object-cover"
+              onError={() => setImgError(true)}
+            />
+          </div>
+          {placeImage.attribution && (
+            <p className="mt-0.5 truncate text-[8px] opacity-40" title={placeImage.attribution}>
+              {placeImage.attribution}
+            </p>
+          )}
+        </div>
+      ) : placeImage && (placeImage.source === 'none' || imgError) ? (
+        <div className="mb-3 flex h-24 w-full flex-col items-center justify-center rounded border border-white/10 bg-white/5">
+          <p className="text-[9px] tracking-[0.3em] opacity-30 uppercase">NO IMAGERY</p>
+          <p className="mt-1 text-[9px] tabular-nums opacity-20">{coords}</p>
+        </div>
+      ) : (
+        /* Loading state */
+        <div className="mb-3 flex h-24 w-full items-center justify-center rounded border border-white/10 bg-white/5">
+          <p className="text-[9px] tracking-[0.3em] opacity-30 uppercase">LOADING…</p>
+        </div>
+      )}
 
       {/* Nearby events */}
       <div className="mb-3">
