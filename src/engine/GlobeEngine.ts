@@ -50,6 +50,8 @@ export class GlobeEngine {
   private placeUnsub?: () => void
   private flight: { from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
   private cityReveal: { lat: number; lon: number; from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
+  /** Ease camera back out after a city reveal is dismissed. */
+  private revealExit: { from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
   private pointerDown: { x: number; y: number } | null = null
   private burnDirector = new BurnDirector()
   private completionFx = new CompletionFx()
@@ -155,9 +157,14 @@ export class GlobeEngine {
         // Reveal just activated — push camera toward the city.
         this.revealTo(reveal.lat, reveal.lon)
       } else if (!reveal && prevReveal) {
-        // Reveal cleared — re-enable controls; let the user zoom back out naturally.
+        // Reveal cleared — ease camera back out to a comfortable orbit distance.
+        const from = this.camera.position.clone()
+        const dir = from.clone().normalize()
+        // Target: same direction but at 2.6R (above minDistance of 1.4R).
+        const to = dir.multiplyScalar(EARTH_RADIUS * 2.6)
         this.cityReveal = null
-        this.controls.enabled = true
+        this.revealExit = { from, to, start: -1 }
+        // Controls re-enabled after the exit ease completes (see update()).
       }
       prevReveal = reveal
     })
@@ -360,6 +367,21 @@ export class GlobeEngine {
       // When done, park at the close position — leave cityReveal set until clearReveal().
     }
     // ── End city reveal push-in ──
+
+    // ── City reveal exit — ease back out to comfortable orbit after dismiss ──
+    if (this.revealExit && !this.burnDirector.active && !this.completionFx.active && !this.cityReveal) {
+      if (this.revealExit.start < 0) this.revealExit.start = elapsedSeconds
+      const exitT = Math.min(1, (elapsedSeconds - this.revealExit.start) / 1.0)
+      const ease = 1 - Math.pow(1 - exitT, 3) // cubic ease-out, ~1s
+      this.camera.position.lerpVectors(this.revealExit.from, this.revealExit.to, ease)
+      this.camera.lookAt(0, 0, 0)
+      this.controls.enabled = false
+      if (exitT >= 1) {
+        this.revealExit = null
+        this.controls.enabled = true
+      }
+    }
+    // ── End city reveal exit ──
 
     // ── Emergency spawn + expiry (throttled once per sim-minute = 60 sim-sec) ──
     // Only while founded — never over the founding screen. The clock (re)starts each

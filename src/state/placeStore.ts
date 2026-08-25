@@ -30,3 +30,9 @@ export const usePlaceStore = create<PlaceState>((set) => ({
       postcards: [dataUrl, ...s.postcards].slice(0, MAX_SESSION_POSTCARDS),
     })),
 }))
+
+// Expose the store on window in non-production so Playwright e2e tests can
+// trigger place inspection without depending on WebGL raycasting.
+if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+  ;(window as unknown as Record<string, unknown>).__placeStore = usePlaceStore
+}

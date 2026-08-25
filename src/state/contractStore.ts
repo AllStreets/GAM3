@@ -38,6 +38,8 @@ export interface Contract {
   id: string
   eventId: string
   title: string
+  /** Optional narrative objective written by AI or fallback; shown in ContractsPanel. */
+  objective?: string
   kind: string
   lat: number
   lon: number

@@ -27,6 +27,7 @@ export function buildPlaceContract(i: PlaceContractInput): Contract {
     id,
     eventId: id,
     title: i.title ?? `${i.placeName} — Observation Tasking`,
+    ...(i.objective ? { objective: i.objective } : {}),
     kind: 'place',
     lat: i.lat,
     lon: i.lon,

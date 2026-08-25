@@ -153,6 +153,7 @@ export default function CityRevealOverlay() {
   return (
     /* Outer shell: pointer-events-none so the globe stays interactive; only controls capture events */
     <div
+      data-testid="city-reveal-overlay"
       className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center"
       aria-label="City reveal overlay"
     >

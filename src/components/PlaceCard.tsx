@@ -119,40 +119,19 @@ export default function PlaceCard() {
     }
   }, [place, clear])
 
-  if (!place || !founded) return null
+  // ── Derived values (computed when place is set; used by the task contract callback) ──
+  // These must be computed before useCallback so the callback dependency is stable.
+  const lat = place?.lat ?? 0
+  const lon = place?.lon ?? 0
+  const label = place ? placeLabel(lat, lon) : ''
+  const nearby = place
+    ? events
+        .filter((ev) => greatCircleKm(lat, lon, ev.lat, ev.lon) <= 600)
+        .sort((a, b) => b.severity - a.severity)
+        .slice(0, 3)
+    : []
 
-  const { lat, lon } = place
-  const label = placeLabel(lat, lon)
-  const coords = formatCoords(lat, lon)
-  const { city, km } = nearestCity(lat, lon)
-
-  // Nearby events within 600 km, top 3 by severity descending
-  const nearby = events
-    .filter((ev) => greatCircleKm(lat, lon, ev.lat, ev.lon) <= 600)
-    .sort((a, b) => b.severity - a.severity)
-    .slice(0, 3)
-
-  // Derive fitting profile from dominant nearby event kind.
-  // Tally occurrences among nearby events.
-  const kindCounts: Record<string, number> = {}
-  for (const ev of nearby) {
-    kindCounts[ev.kind] = (kindCounts[ev.kind] ?? 0) + 1
-  }
-  const dominantKind =
-    Object.keys(kindCounts).length > 0
-      ? Object.entries(kindCounts).sort((a, b) => b[1] - a[1])[0][0]
-      : null
-  const archetype = dominantKind ? archetypeForKind(dominantKind) : 'research'
-  const capability = dominantKind ? capabilityForKind(dominantKind) : 'imaging'
-  const capLabel = CAPABILITY_LABEL[capability]
-  const archColor = ARCHETYPE_COLOR[archetype]
-  const capColor = CAPABILITY_COLOR_MAP[capLabel] ?? '#45d8ff'
-
-  const handleFocus = () => {
-    focusReveal(lat, lon, label)
-    clear()
-  }
-
+  // ── TASK CONTRACT (must be declared as a hook BEFORE the early return) ──────
   const handleTaskContract = useCallback(async () => {
     if (taskingInFlight) return
     setTaskingInFlight(true)
@@ -185,6 +164,7 @@ export default function PlaceCard() {
 
       const contract = buildPlaceContract({
         ...data.mission,
+        objective: data.mission.objective,
         lat,
         lon,
         placeName: label,
@@ -203,10 +183,37 @@ export default function PlaceCard() {
     }
   }, [taskingInFlight, lat, lon, label, nearby])
 
+  if (!place || !founded) return null
+
+  // ── Additional derived values only needed for rendering ───────────────────
+  const coords = formatCoords(lat, lon)
+  const { city, km } = nearestCity(lat, lon)
+
+  // Derive fitting profile from dominant nearby event kind.
+  const kindCounts: Record<string, number> = {}
+  for (const ev of nearby) {
+    kindCounts[ev.kind] = (kindCounts[ev.kind] ?? 0) + 1
+  }
+  const dominantKind =
+    Object.keys(kindCounts).length > 0
+      ? Object.entries(kindCounts).sort((a, b) => b[1] - a[1])[0][0]
+      : null
+  const archetype = dominantKind ? archetypeForKind(dominantKind) : 'research'
+  const capability = dominantKind ? capabilityForKind(dominantKind) : 'imaging'
+  const capLabel = CAPABILITY_LABEL[capability]
+  const archColor = ARCHETYPE_COLOR[archetype]
+  const capColor = CAPABILITY_COLOR_MAP[capLabel] ?? '#45d8ff'
+
+  const handleFocus = () => {
+    focusReveal(lat, lon, label)
+    clear()
+  }
+
   return (
     <div
       ref={cardRef}
-      className="pointer-events-auto fixed bottom-24 left-6 z-30 w-72 rounded border border-white/15 bg-black/75 p-4 font-mono text-xs text-[var(--text)] backdrop-blur"
+      data-testid="place-card"
+      className="pointer-events-auto fixed bottom-6 left-1/2 z-30 w-72 -translate-x-1/2 rounded border border-[var(--accent)]/25 bg-black/80 p-4 font-mono text-xs text-[var(--text)] shadow-[0_0_24px_2px_rgba(69,216,255,0.10)] backdrop-blur"
     >
       {/* Header */}
       <div className="mb-2 flex items-start justify-between gap-2">
