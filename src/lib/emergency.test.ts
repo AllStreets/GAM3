@@ -39,11 +39,11 @@ describe('shouldSpawnConjunction', () => {
 })
 
 describe('makeConjunction', () => {
-  it('sets deadline = now + leadSec (default 240)', () => {
+  it('sets deadline = now + leadSec (default 1200)', () => {
     const c = makeConjunction('hyp-1', 1000)
     expect(c.satId).toBe('hyp-1')
     expect(c.startedAt).toBe(1000)
-    expect(c.deadline).toBe(1240)
+    expect(c.deadline).toBe(2200)
   })
 
   it('sets requiredDv to the default 120 when not provided', () => {
