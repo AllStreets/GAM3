@@ -65,8 +65,8 @@ export default function Hud() {
       <LossBeat />
       <PlaceCard />
       <CityRevealOverlay />
-      {/* Postcard controls — bottom-right corner, above AgencyBar */}
-      <div className="pointer-events-none fixed bottom-6 right-6 z-20 flex flex-col items-end gap-2">
+      {/* Postcard controls — bottom-right, shifted left of the round GUIDE (?) button so they never overlap */}
+      <div className="pointer-events-none fixed bottom-6 right-20 z-20 flex flex-col items-end gap-2">
         <PostcardStrip />
         <PostcardButton />
       </div>

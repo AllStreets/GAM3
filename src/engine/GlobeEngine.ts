@@ -22,6 +22,14 @@ import { BurnDirector } from '@/engine/BurnDirector'
 import { propagate, sceneFromEci } from '@/lib/orbits'
 import { audio } from '@/audio/AudioEngine'
 
+/**
+ * Longitude rotation applied to the textured Earth shells (day/night/clouds/atmosphere)
+ * so the equirectangular texture lines up with the `latLonToVector3` convention that every
+ * geo-placed object (satellites, orbits, event markers, place markers, the sun) already uses.
+ * −90° corrects the offset between THREE.SphereGeometry's UV seam and theta = (90 − lon).
+ */
+const TEXTURE_LON_OFFSET = -Math.PI / 2
+
 /** Module-level reference so React components can call captureFrame without touching Three objects. */
 let _activeEngine: GlobeEngine | null = null
 export function getActiveEngine(): GlobeEngine | null {
@@ -82,6 +90,12 @@ export class GlobeEngine {
       new THREE.SphereGeometry(EARTH_RADIUS, 96, 96),
       new THREE.MeshBasicMaterial({ color: 0x0a2a4a }), // visible until textures load
     )
+    // THREE.SphereGeometry's equirectangular UV places lon 0° 90° away from where
+    // latLonToVector3 (theta = 90 - lon) puts it. The whole logic frame (satellites,
+    // orbits, intercept, event markers, sun) is self-consistent in the latLonToVector3
+    // convention; only the visual texture is offset. Rotate the textured shells by this
+    // constant so continents line up with markers/clicks/terminator. See src/lib/geo.ts.
+    this.earth.rotation.y = TEXTURE_LON_OFFSET
     this.scene.add(this.earth)
 
     const loader = new THREE.TextureLoader()
@@ -111,6 +125,7 @@ export class GlobeEngine {
       new THREE.SphereGeometry(EARTH_RADIUS * 1.12, 96, 96),
       this.atmosphereMaterial,
     )
+    atmosphere.rotation.y = TEXTURE_LON_OFFSET // keep day-side glow aligned with the earth
     this.scene.add(atmosphere)
 
     new THREE.TextureLoader().loadAsync('/textures/clouds.png').then((tex) => {
@@ -406,7 +421,7 @@ export class GlobeEngine {
     // ── End emergency tick ──
 
     this.updateSun()
-    if (this.clouds) this.clouds.rotation.y = elapsedSeconds * 0.004
+    if (this.clouds) this.clouds.rotation.y = TEXTURE_LON_OFFSET + elapsedSeconds * 0.004
     this.satLayer.update(simNow())
     this.eventLayer.update(elapsedSeconds)
     this.contractLayer.update(simNow())
