@@ -6,6 +6,7 @@ import { composePostcard, postcardCaption } from '@/lib/postcard'
 import { emblemSvgString } from '@/components/Emblem'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
+import { usePlaceStore } from '@/state/placeStore'
 import { simNow } from '@/lib/simTime'
 import { audio } from '@/audio/AudioEngine'
 
@@ -30,6 +31,10 @@ export default function PostcardButton() {
   const contracts = useContractStore((s) => s.contracts)
   const lastCompletion = useContractStore((s) => s.lastCompletion)
 
+  // Place state — nudge when a city reveal is active
+  const reveal = usePlaceStore((s) => s.reveal)
+  const addPostcard = usePlaceStore((s) => s.addPostcard)
+
   // Watch for completion cinematics to show nudge
   const lastCompletionRef = useRef<string | null>(null)
   useEffect(() => {
@@ -46,6 +51,28 @@ export default function PostcardButton() {
     if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current)
     nudgeTimerRef.current = setTimeout(() => setShowNudge(false), 3000)
   }, [lastCompletion])
+
+  // Also show nudge when a city reveal becomes active (inherently postcard-worthy)
+  const revealRef = useRef<typeof reveal>(null)
+  useEffect(() => {
+    if (!reveal) return
+    // Only trigger when a new reveal appears (not on re-renders with same reveal)
+    if (reveal === revealRef.current) return
+    revealRef.current = reveal
+
+    const now = simNow()
+    if (now - lastNudgeSimTime < NUDGE_COOLDOWN_SIM_S) return
+    lastNudgeSimTime = now
+
+    setShowNudge(true)
+    if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current)
+    nudgeTimerRef.current = setTimeout(() => setShowNudge(false), 3000)
+  }, [reveal])
+
+  // Clear revealRef when reveal is dismissed
+  useEffect(() => {
+    if (!reveal) revealRef.current = null
+  }, [reveal])
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -77,27 +104,30 @@ export default function PostcardButton() {
       // 3. Build emblem SVG string
       const svgStr = emblemSvgString(emblemId, colorway, 100)
 
-      // 4. Composite
+      // 4. Composite (orbital frame — no city image)
       const postcardDataUrl = await composePostcard(frameDataUrl, {
         agencyName: agencyName || 'HYPERION',
         emblemSvg: svgStr,
         caption,
       })
 
-      // 5. Download
+      // 5. Push into session strip
+      if (postcardDataUrl) addPostcard(postcardDataUrl)
+
+      // 6. Download
       const link = document.createElement('a')
       link.download = 'hyperion-postcard.png'
       link.href = postcardDataUrl
       link.click()
 
-      // 6. Audio feedback
+      // 7. Audio feedback
       audio.uiTick()
     } catch (err) {
       console.error('PostcardButton: capture failed', err)
     } finally {
       setCapturing(false)
     }
-  }, [agencyName, emblemId, colorway, targetId, contracts, capturing])
+  }, [agencyName, emblemId, colorway, targetId, contracts, capturing, addPostcard])
 
   const dismissNudge = useCallback(() => {
     setShowNudge(false)
@@ -106,10 +136,10 @@ export default function PostcardButton() {
 
   return (
     <>
-      {/* Nudge — appears after completion cinematics, rate-limited */}
+      {/* Nudge — appears after completion cinematics or city reveals, rate-limited */}
       {showNudge && (
         <div
-          className="pointer-events-auto absolute bottom-20 right-16 flex animate-fade-in items-center gap-2 rounded border border-[var(--accent)] bg-black/70 px-3 py-1.5 text-xs text-[var(--accent)] shadow-lg backdrop-blur-sm"
+          className="pointer-events-auto absolute bottom-12 right-0 flex animate-fade-in items-center gap-2 rounded border border-[var(--accent)] bg-black/70 px-3 py-1.5 text-xs text-[var(--accent)] shadow-lg backdrop-blur-sm whitespace-nowrap"
           role="status"
         >
           <span>postcard-worthy ✨</span>
@@ -123,20 +153,20 @@ export default function PostcardButton() {
         </div>
       )}
 
-      {/* Camera button */}
+      {/* Labelled postcard button — prominent, on-brand */}
       <button
         onClick={handleCapture}
         disabled={capturing}
         aria-label="Capture orbital postcard"
         title="Capture orbital postcard"
-        className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded border border-[var(--accent)] bg-black/60 text-[var(--accent)] opacity-70 backdrop-blur-sm transition hover:opacity-100 disabled:opacity-30"
+        className="pointer-events-auto flex h-8 items-center gap-1.5 rounded border border-[var(--accent)] bg-black/60 px-3 text-[var(--accent)] opacity-70 backdrop-blur-sm transition hover:opacity-100 disabled:opacity-30"
       >
         {capturing ? (
           // Spinner while compositing
           <svg
             className="animate-spin"
-            width="14"
-            height="14"
+            width="12"
+            height="12"
             viewBox="0 0 14 14"
             fill="none"
             aria-hidden
@@ -144,13 +174,12 @@ export default function PostcardButton() {
             <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="2" strokeDasharray="20 10" />
           </svg>
         ) : (
-          // Camera icon
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-            <rect x="1" y="4" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-            <circle cx="8" cy="9" r="3" stroke="currentColor" strokeWidth="1.4" />
-            <path d="M5.5 4 L6.5 2 H9.5 L10.5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          // Record / capture dot
+          <span className="text-[10px]" aria-hidden>◉</span>
         )}
+        <span className="text-[10px] font-semibold tracking-[0.2em] uppercase">
+          {capturing ? 'CAPTURING…' : 'POSTCARD'}
+        </span>
       </button>
     </>
   )

@@ -16,6 +16,7 @@ import CompletionCinematic from '@/components/CompletionCinematic'
 import { ConjunctionAlert, LossBeat } from '@/components/EmergencyAlert'
 import ColdOpenScreen from '@/components/ColdOpenScreen'
 import PostcardButton from '@/components/PostcardButton'
+import PostcardStrip from '@/components/PostcardStrip'
 import PlaceCard from '@/components/PlaceCard'
 import CityRevealOverlay from '@/components/CityRevealOverlay'
 
@@ -64,8 +65,9 @@ export default function Hud() {
       <LossBeat />
       <PlaceCard />
       <CityRevealOverlay />
-      {/* Postcard capture — bottom-right corner, above AgencyBar */}
+      {/* Postcard controls — bottom-right corner, above AgencyBar */}
       <div className="pointer-events-none fixed bottom-6 right-6 z-20 flex flex-col items-end gap-2">
+        <PostcardStrip />
         <PostcardButton />
       </div>
     </div>
