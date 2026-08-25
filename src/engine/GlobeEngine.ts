@@ -6,14 +6,16 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { FilmPass } from 'three/addons/postprocessing/FilmPass.js'
 import { createEarthMaterial } from '@/engine/earthMaterial'
 import { createAtmosphereMaterial } from '@/engine/atmosphereMaterial'
-import { EARTH_RADIUS, latLonToVector3, subsolarPoint } from '@/lib/geo'
+import { EARTH_RADIUS, latLonToVector3, subsolarPoint, vector3ToLatLon } from '@/lib/geo'
 import { SatelliteLayer } from '@/engine/SatelliteLayer'
 import { EventLayer } from '@/engine/EventLayer'
 import { ContractLayer } from '@/engine/ContractLayer'
 import { CompletionFx } from '@/engine/CompletionFx'
+import { PlaceMarker } from '@/engine/PlaceMarker'
 import { simNow } from '@/lib/simTime'
 import { useGameStore } from '@/state/gameStore'
 import { useAgencyStore } from '@/state/agencyStore'
+import { usePlaceStore } from '@/state/placeStore'
 import { useContractStore } from '@/state/contractStore'
 import { useWorldStore } from '@/state/worldStore'
 import { BurnDirector } from '@/engine/BurnDirector'
@@ -49,6 +51,7 @@ export class GlobeEngine {
   private pointerDown: { x: number; y: number } | null = null
   private burnDirector = new BurnDirector()
   private completionFx = new CompletionFx()
+  private placeMarker = new PlaceMarker()
   private lastSeenCompletionId: string | null = null
   private lastElapsed = 0
   private lastEmergencyTick = -1e9
@@ -133,6 +136,7 @@ export class GlobeEngine {
 
     this.scene.add(this.contractLayer.group)
     this.scene.add(this.completionFx.group)
+    this.scene.add(this.placeMarker.group)
 
     this.worldUnsub = useWorldStore.subscribe((state, prev) => {
       if (state.focusedId && state.focusedId !== prev.focusedId) {
@@ -176,7 +180,20 @@ export class GlobeEngine {
     const raycaster = new THREE.Raycaster()
     raycaster.setFromCamera(ndc, this.camera)
     const id = this.satLayer.pickSatelliteId(raycaster)
-    useGameStore.getState().select(id)
+    if (id) {
+      useGameStore.getState().select(id)
+      return
+    }
+    // No satellite hit — try the globe surface and open a place inspect.
+    if (useAgencyStore.getState().founded && !useGameStore.getState().burnSession) {
+      const hit = raycaster.intersectObject(this.earth, false)[0]
+      if (hit) {
+        const { lat, lon } = vector3ToLatLon(hit.point)
+        usePlaceStore.getState().inspect(lat, lon)
+        return
+      }
+    }
+    useGameStore.getState().select(null) // empty space → deselect
   }
 
   private buildStarfield(): THREE.Points {
@@ -331,6 +348,7 @@ export class GlobeEngine {
     this.satLayer.update(simNow())
     this.eventLayer.update(elapsedSeconds)
     this.contractLayer.update(simNow())
+    this.placeMarker.update()
     if (this.burnDirector.shake > 0.001) {
       this.camera.position.x += (Math.random() - 0.5) * this.burnDirector.shake * 0.012
       this.camera.position.y += (Math.random() - 0.5) * this.burnDirector.shake * 0.012
@@ -393,6 +411,7 @@ export class GlobeEngine {
     this.worldUnsub?.()
     this.burnDirector.dispose()
     this.completionFx.dispose()
+    this.placeMarker.dispose()
     this.contractLayer.dispose()
     this.eventLayer.dispose()
     this.satLayer.dispose()

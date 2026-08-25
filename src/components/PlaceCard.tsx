@@ -1,0 +1,194 @@
+'use client'
+
+import { useEffect, useRef } from 'react'
+import { usePlaceStore } from '@/state/placeStore'
+import { useWorldStore } from '@/state/worldStore'
+import { useAgencyStore } from '@/state/agencyStore'
+import { nearestCity, placeLabel } from '@/lib/nearestCity'
+import { greatCircleKm } from '@/lib/geo'
+import { archetypeForKind, capabilityForKind } from '@/lib/contractMeta'
+import { CAPABILITY_LABEL } from '@/lib/satelliteMeta'
+import { ARCHETYPE_COLOR } from '@/lib/archetype'
+import { Chip } from '@/components/ui/Chip'
+
+const ARCHETYPE_LABEL: Record<string, string> = {
+  relief: 'RELIEF',
+  research: 'RESEARCH',
+  defense: 'DEFENSE',
+}
+
+const CAPABILITY_COLOR_MAP: Record<string, string> = {
+  OPTICAL: '#60a5fa',
+  RELAY: '#4ade80',
+  THERMAL: '#f87171',
+}
+
+function formatCoords(lat: number, lon: number): string {
+  const latAbs = Math.abs(lat).toFixed(2)
+  const lonAbs = Math.abs(lon).toFixed(2)
+  const latDir = lat >= 0 ? 'N' : 'S'
+  const lonDir = lon >= 0 ? 'E' : 'W'
+  return `${latAbs}°${latDir}  ${lonAbs}°${lonDir}`
+}
+
+const KIND_COLOR: Record<string, string> = {
+  quake: '#f87171',
+  wildfire: '#fb923c',
+  storm: '#60a5fa',
+  launch: '#4ade80',
+}
+
+export default function PlaceCard() {
+  const place = usePlaceStore((s) => s.place)
+  const clear = usePlaceStore((s) => s.clear)
+  const focusReveal = usePlaceStore((s) => s.focusReveal)
+  const founded = useAgencyStore((s) => s.founded)
+  const events = useWorldStore((s) => s.events)
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  // ESC to close
+  useEffect(() => {
+    if (!place) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') clear()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [place, clear])
+
+  // Click-away to close
+  useEffect(() => {
+    if (!place) return
+    const onClick = (e: MouseEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        clear()
+      }
+    }
+    // Delayed attach so the opening click doesn't immediately close.
+    const id = setTimeout(() => window.addEventListener('mousedown', onClick), 0)
+    return () => {
+      clearTimeout(id)
+      window.removeEventListener('mousedown', onClick)
+    }
+  }, [place, clear])
+
+  if (!place || !founded) return null
+
+  const { lat, lon } = place
+  const label = placeLabel(lat, lon)
+  const coords = formatCoords(lat, lon)
+  const { city, km } = nearestCity(lat, lon)
+
+  // Nearby events within 600 km, top 3 by severity descending
+  const nearby = events
+    .filter((ev) => greatCircleKm(lat, lon, ev.lat, ev.lon) <= 600)
+    .sort((a, b) => b.severity - a.severity)
+    .slice(0, 3)
+
+  // Derive fitting profile from dominant nearby event kind.
+  // Tally occurrences among nearby events.
+  const kindCounts: Record<string, number> = {}
+  for (const ev of nearby) {
+    kindCounts[ev.kind] = (kindCounts[ev.kind] ?? 0) + 1
+  }
+  const dominantKind =
+    Object.keys(kindCounts).length > 0
+      ? Object.entries(kindCounts).sort((a, b) => b[1] - a[1])[0][0]
+      : null
+  const archetype = dominantKind ? archetypeForKind(dominantKind) : 'research'
+  const capability = dominantKind ? capabilityForKind(dominantKind) : 'imaging'
+  const capLabel = CAPABILITY_LABEL[capability]
+  const archColor = ARCHETYPE_COLOR[archetype]
+  const capColor = CAPABILITY_COLOR_MAP[capLabel] ?? '#45d8ff'
+
+  const handleFocus = () => {
+    focusReveal(lat, lon, label)
+    clear()
+  }
+
+  return (
+    <div
+      ref={cardRef}
+      className="pointer-events-auto fixed bottom-24 left-6 z-30 w-72 rounded border border-white/15 bg-black/75 p-4 font-mono text-xs text-[var(--text)] backdrop-blur"
+    >
+      {/* Header */}
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-[10px] font-bold tracking-[0.3em] text-[var(--accent)] uppercase">
+            {label}
+          </p>
+          <p className="mt-0.5 text-[10px] tabular-nums opacity-60">{coords}</p>
+          <p className="mt-0.5 text-[10px] opacity-50">
+            {Math.round(km)} km from {city.name}
+          </p>
+        </div>
+        <button
+          onClick={clear}
+          className="shrink-0 rounded border border-white/10 px-1.5 py-0.5 text-[10px] opacity-60 hover:border-white/30 hover:opacity-100 transition"
+          aria-label="Close place card"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="my-2 h-px bg-white/10" />
+
+      {/* Image placeholder (Task 3 fills) */}
+      <div className="mb-3 flex h-24 w-full items-center justify-center rounded border border-white/10 bg-white/5 text-[9px] tracking-[0.3em] opacity-40 uppercase">
+        IMAGERY —
+      </div>
+
+      {/* Nearby events */}
+      <div className="mb-3">
+        <p className="mb-1 text-[9px] tracking-[0.3em] opacity-50 uppercase">Nearby Events</p>
+        {nearby.length === 0 ? (
+          <p className="text-[10px] opacity-40">No events within 600 km</p>
+        ) : (
+          <ul className="space-y-1">
+            {nearby.map((ev) => (
+              <li key={ev.id} className="flex items-center gap-1.5 min-w-0">
+                <Chip color={KIND_COLOR[ev.kind] ?? '#45d8ff'}>
+                  {ev.kind.toUpperCase()}
+                </Chip>
+                <span className="truncate opacity-80">{ev.title}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Fitting profile */}
+      <div className="mb-3">
+        <p className="mb-1 text-[9px] tracking-[0.3em] opacity-50 uppercase">Fitting Profile</p>
+        <div className="flex items-center gap-1.5">
+          <Chip color={archColor}>{ARCHETYPE_LABEL[archetype]}</Chip>
+          <Chip color={capColor}>{capLabel}</Chip>
+        </div>
+      </div>
+
+      <div className="my-2 h-px bg-white/10" />
+
+      {/* Actions */}
+      <div className="flex flex-col gap-1.5">
+        <button
+          onClick={handleFocus}
+          className="w-full rounded border border-[var(--accent)]/50 py-1.5 text-[10px] tracking-[0.2em] text-[var(--accent)] transition hover:bg-[var(--accent)]/10 uppercase"
+        >
+          FOCUS / ZOOM IN
+        </button>
+        <button
+          disabled
+          className="w-full rounded border border-white/10 py-1.5 text-[10px] tracking-[0.2em] opacity-30 uppercase cursor-not-allowed"
+        >
+          TASK CONTRACT HERE
+        </button>
+        <button
+          disabled
+          className="w-full rounded border border-white/10 py-1.5 text-[10px] tracking-[0.2em] opacity-30 uppercase cursor-not-allowed"
+        >
+          CAPTURE POSTCARD
+        </button>
+      </div>
+    </div>
+  )
+}
