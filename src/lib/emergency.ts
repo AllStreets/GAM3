@@ -47,7 +47,7 @@ export function makeConjunction(
   satId: string,
   now: number,
   requiredDv = 120,
-  leadSec = 240,
+  leadSec = 1200,
 ): Conjunction {
   return {
     satId,

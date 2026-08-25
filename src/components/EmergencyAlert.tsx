@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useGameStore } from '@/state/gameStore'
+import { useAgencyStore } from '@/state/agencyStore'
 import { simNow } from '@/lib/simTime'
 import { audio } from '@/audio/AudioEngine'
 
@@ -22,6 +23,7 @@ function formatCountdown(simSec: number): string {
 // ──────────────────────────────────────────────────────────────────────────────
 
 export function ConjunctionAlert() {
+  const founded = useAgencyStore((s) => s.founded)
   const emergency = useGameStore((s) => s.emergency)
   const satellites = useGameStore((s) => s.satellites)
   const select = useGameStore((s) => s.select)
@@ -39,7 +41,7 @@ export function ConjunctionAlert() {
     return () => clearInterval(id)
   }, [emergency])
 
-  if (!emergency) return null
+  if (!founded || !emergency) return null
 
   const sat = satellites.find((s) => s.id === emergency.satId)
   const satName = sat?.name ?? emergency.satId
@@ -137,10 +139,11 @@ export function ConjunctionAlert() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 export function LossBeat() {
+  const founded = useAgencyStore((s) => s.founded)
   const lastLoss = useGameStore((s) => s.lastLoss)
   const clearLoss = useGameStore((s) => s.clearLoss)
 
-  if (!lastLoss) return null
+  if (!founded || !lastLoss) return null
 
   const handleDismiss = () => {
     audio.uiTick()

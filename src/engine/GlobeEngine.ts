@@ -13,6 +13,7 @@ import { ContractLayer } from '@/engine/ContractLayer'
 import { CompletionFx } from '@/engine/CompletionFx'
 import { simNow } from '@/lib/simTime'
 import { useGameStore } from '@/state/gameStore'
+import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
 import { useWorldStore } from '@/state/worldStore'
 import { BurnDirector } from '@/engine/BurnDirector'
@@ -51,6 +52,7 @@ export class GlobeEngine {
   private lastSeenCompletionId: string | null = null
   private lastElapsed = 0
   private lastEmergencyTick = -1e9
+  private emergencyClockStarted = false
   private sunLight = new THREE.DirectionalLight(0xfff4e0, 2.2)
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -303,15 +305,24 @@ export class GlobeEngine {
     // --- End completion chase-lock ---
 
     // ── Emergency spawn + expiry (throttled once per sim-minute = 60 sim-sec) ──
+    // Only while founded — never over the founding screen. The clock (re)starts each
+    // session so the first conjunction is a full min-gap into play, never on load.
     const simTime = simNow()
-    if (simTime - this.lastEmergencyTick > 60) {
+    if (useAgencyStore.getState().founded && simTime - this.lastEmergencyTick > 60) {
       this.lastEmergencyTick = simTime
-      // Deterministic roll: fractional part of a slowly-varying function of sim time.
-      // Varies continuously but never uses Math.random, so no state-dependent randomness.
-      const roll = (Math.sin(simTime * 0.1) * 0.5 + 0.5)
       const gs = useGameStore.getState()
-      gs.maybeSpawnConjunction(simTime, roll)
-      gs.tickEmergency(simTime)
+      if (!this.emergencyClockStarted) {
+        // First founded tick this session: reset the gap timer to now and clear any
+        // stale emergency, so returning players never load straight into a loss.
+        gs.startEmergencyClock(simTime)
+        this.emergencyClockStarted = true
+      } else {
+        // Deterministic roll: a slowly-varying function of sim time.
+        // Varies continuously but never uses Math.random, so no state-dependent randomness.
+        const roll = (Math.sin(simTime * 0.1) * 0.5 + 0.5)
+        gs.maybeSpawnConjunction(simTime, roll)
+        gs.tickEmergency(simTime)
+      }
     }
     // ── End emergency tick ──
 

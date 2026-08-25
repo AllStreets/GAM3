@@ -116,6 +116,8 @@ interface GameState {
   bumpStreak(): void
   resetStreak(): void
   clearLastManeuver(): void
+  /** Reset the conjunction gap timer to `now` and clear any active emergency (per-session). */
+  startEmergencyClock(now: number): void
   /** Check and possibly spawn a conjunction; supply a deterministic roll ∈ [0,1). */
   maybeSpawnConjunction(now: number, roll: number): void
   /** Clear the emergency when the burned sat has spent enough Δv. */
@@ -308,6 +310,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // ── Emergency actions ──────────────────────────────────────────────────────
+
+  startEmergencyClock: (now) => {
+    // Reset the conjunction gap timer to `now` and clear any active emergency.
+    // Called once per session (first founded engine tick) so emergencies never
+    // fire on load or over the founding screen — always a full min-gap into play.
+    set({ lastConjunctionAt: now, emergency: null })
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: now })
+  },
 
   maybeSpawnConjunction: (now, roll) => {
     const { emergency, lastConjunctionAt, satellites } = get()
