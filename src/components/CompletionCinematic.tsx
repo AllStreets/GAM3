@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useContractStore, type CompletionEvent } from '@/state/contractStore'
 import { audio } from '@/audio/AudioEngine'
 import { ARCHETYPE_COLOR } from '@/lib/archetype'
+import type { PlaceImage } from '@/lib/placeImage'
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -56,11 +57,35 @@ export default function CompletionCinematic() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clearedRef = useRef<string | null>(null)
 
-  // Pick up a new event.
+  // City image state — progressive enhancement, never blocks sequence.
+  const [placeImage, setPlaceImage] = useState<PlaceImage | null>(null)
+  const [imgError, setImgError] = useState(false)
+  const fetchIdRef = useRef(0)
+
+  // Pick up a new event and fire image fetch immediately (non-blocking).
   useEffect(() => {
     if (!lastCompletion) return
     if (lastCompletion.contractId === clearedRef.current) return
     setActive({ phase: 0, event: lastCompletion })
+
+    // Reset image state for new completion.
+    setPlaceImage(null)
+    setImgError(false)
+    const fetchId = ++fetchIdRef.current
+    const { lat, lon } = lastCompletion
+    void (async () => {
+      try {
+        const res = await fetch(`/api/place-image?lat=${lat}&lon=${lon}`)
+        if (!res.ok) return
+        const data = (await res.json()) as PlaceImage
+        // Race-guard: ignore if a newer completion has started.
+        if (fetchIdRef.current === fetchId) {
+          setPlaceImage(data)
+        }
+      } catch {
+        // Network error — image is purely progressive, nothing to do.
+      }
+    })()
   }, [lastCompletion])
 
   // Phase advancement.
@@ -96,6 +121,9 @@ export default function CompletionCinematic() {
     clearedRef.current = active.event.contractId
     setActive(null)
     clearCompletion()
+    // Reset image state so the next completion re-fetches clean.
+    setPlaceImage(null)
+    setImgError(false)
   }
 
   if (!active) return null
@@ -107,6 +135,9 @@ export default function CompletionCinematic() {
       event={event}
       phase={phase}
       onDismiss={dismiss}
+      placeImage={placeImage}
+      imgError={imgError}
+      onImgError={() => setImgError(true)}
     />
   )
 }
@@ -119,12 +150,22 @@ function CompletionOverlay({
   event,
   phase,
   onDismiss,
+  placeImage,
+  imgError,
+  onImgError,
 }: {
   event: CompletionEvent
   phase: number
   onDismiss: () => void
+  placeImage: PlaceImage | null
+  imgError: boolean
+  onImgError: () => void
 }) {
   const archetypeColor = ARCHETYPE_COLOR[event.archetype] ?? '#ffffff'
+
+  // Hero image bloom: true when image is ready AND phase has reached downlink (1+).
+  const hasImage = placeImage && placeImage.source !== 'none' && !imgError
+  const imageVisible = hasImage && phase >= 1
 
   // Downlink progress (phase 1)
   const dlProgress = useCountUp(100, 1400, phase >= 1)
@@ -159,10 +200,43 @@ function CompletionOverlay({
         className="pointer-events-auto relative w-80 rounded border border-[var(--accent)] bg-black/80 p-5 font-mono backdrop-blur-sm"
         style={{ boxShadow: `0 0 24px 2px ${archetypeColor}40` }}
       >
+        {/* City image hero bloom — absolutely positioned, behind content, no layout impact */}
+        {hasImage && (
+          <div
+            className="absolute inset-0 overflow-hidden rounded"
+            style={{
+              opacity: imageVisible ? 1 : 0,
+              transform: imageVisible ? 'scale(1)' : 'scale(1.04)',
+              transition: 'opacity 700ms ease-out, transform 700ms ease-out',
+              pointerEvents: 'none',
+            }}
+          >
+            <img
+              src={placeImage!.url}
+              alt={placeImage!.title || event.title}
+              className="h-full w-full object-cover"
+              onError={onImgError}
+              loading="lazy"
+            />
+            {/* Dark gradient overlay so text remains legible */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.50) 50%, rgba(0,0,0,0.80) 100%)`,
+              }}
+            />
+            {/* Accent-color tint at top edge for archetype identity */}
+            <div
+              className="absolute inset-x-0 top-0 h-0.5"
+              style={{ background: archetypeColor, opacity: 0.7 }}
+            />
+          </div>
+        )}
+
         {/* Title */}
-        <p className="mb-1 text-[10px] tracking-[0.4em] text-[var(--accent)] opacity-70">CONTRACT COMPLETE</p>
+        <p className="relative mb-1 text-[10px] tracking-[0.4em] text-[var(--accent)] opacity-70">CONTRACT COMPLETE</p>
         <h2
-          className="mb-4 text-sm font-bold leading-tight tracking-widest"
+          className="relative mb-4 text-sm font-bold leading-tight tracking-widest"
           style={{ color: archetypeColor }}
         >
           {event.title.toUpperCase()}
@@ -170,7 +244,7 @@ function CompletionOverlay({
 
         {/* Data-downlink bar (phases 1+) */}
         {phase >= 1 && (
-          <div className="mb-3">
+          <div className="relative mb-3">
             <p className="mb-1 text-[9px] tracking-[0.3em] text-[var(--text)] opacity-50">
               DATA DOWNLINK
             </p>
@@ -194,7 +268,7 @@ function CompletionOverlay({
 
         {/* Funding tally (phases 2+) */}
         {phase >= 2 && (
-          <div className="mb-4">
+          <div className="relative mb-4">
             <p className="mb-0.5 text-[9px] tracking-[0.3em] text-[var(--text)] opacity-50">FUNDING AWARDED</p>
             <p className="text-2xl font-bold tabular-nums" style={{ color: archetypeColor }}>
               ${fundingCount.toLocaleString()}
@@ -204,7 +278,7 @@ function CompletionOverlay({
 
         {/* Archetype chip + flourishes (phases 3+) */}
         {phase >= 3 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="relative flex flex-wrap gap-2">
             {/* Archetype chip */}
             <span
               className="rounded border px-2 py-0.5 text-[9px] tracking-widest"
@@ -251,10 +325,24 @@ function CompletionOverlay({
           </div>
         )}
 
+        {/* Image attribution — shown small when image bloomed in */}
+        {hasImage && placeImage!.attribution && phase >= 1 && (
+          <p
+            className="relative mt-2 truncate text-[7px] opacity-25"
+            title={placeImage!.attribution}
+            style={{
+              opacity: imageVisible ? 0.25 : 0,
+              transition: 'opacity 700ms ease-out',
+            }}
+          >
+            {placeImage!.attribution}
+          </p>
+        )}
+
         {/* Dismiss hint */}
         <button
           onClick={onDismiss}
-          className="mt-4 block w-full cursor-pointer text-center text-[8px] tracking-[0.5em] text-[var(--text)] opacity-30 hover:opacity-60 transition-opacity"
+          className="relative mt-4 block w-full cursor-pointer text-center text-[8px] tracking-[0.5em] text-[var(--text)] opacity-30 hover:opacity-60 transition-opacity"
         >
           [ DISMISS ]
         </button>
