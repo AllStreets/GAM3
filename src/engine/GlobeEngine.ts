@@ -47,7 +47,9 @@ export class GlobeEngine {
   private eventLayer: EventLayer
   private contractLayer = new ContractLayer()
   private worldUnsub?: () => void
+  private placeUnsub?: () => void
   private flight: { from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
+  private cityReveal: { lat: number; lon: number; from: THREE.Vector3; to: THREE.Vector3; start: number } | null = null
   private pointerDown: { x: number; y: number } | null = null
   private burnDirector = new BurnDirector()
   private completionFx = new CompletionFx()
@@ -143,6 +145,21 @@ export class GlobeEngine {
         const ev = state.events.find((e) => e.id === state.focusedId)
         if (ev) this.flyTo(ev.lat, ev.lon)
       }
+    })
+
+    // Subscribe to place reveal: push camera in when reveal activates, restore controls when cleared.
+    let prevReveal = usePlaceStore.getState().reveal
+    this.placeUnsub = usePlaceStore.subscribe((state) => {
+      const reveal = state.reveal
+      if (reveal && !prevReveal) {
+        // Reveal just activated — push camera toward the city.
+        this.revealTo(reveal.lat, reveal.lon)
+      } else if (!reveal && prevReveal) {
+        // Reveal cleared — re-enable controls; let the user zoom back out naturally.
+        this.cityReveal = null
+        this.controls.enabled = true
+      }
+      prevReveal = reveal
     })
 
     canvas.addEventListener('pointerdown', this.onPointerDown)
@@ -243,6 +260,17 @@ export class GlobeEngine {
     this.sunLight.position.copy(dir).multiplyScalar(10)
   }
 
+  /**
+   * Push the camera in from orbit to a close viewing distance above (lat, lon).
+   * Called by the placeStore subscription when reveal activates.
+   */
+  private revealTo(lat: number, lon: number) {
+    const from = this.camera.position.clone()
+    // Surface-normal direction toward the target point, scaled to a close radius.
+    const to = latLonToVector3(lat, lon, 1).normalize().multiplyScalar(EARTH_RADIUS * 1.25)
+    this.cityReveal = { lat, lon, from, to, start: -1 }
+  }
+
   /** Ease the camera so it looks down on (lat, lon), preserving current distance. */
   private flyTo(lat: number, lon: number) {
     const dist = this.camera.position.length()
@@ -320,6 +348,18 @@ export class GlobeEngine {
       }
     }
     // --- End completion chase-lock ---
+
+    // ── City reveal push-in (below burn chase + completion chase; never fights either) ──
+    if (this.cityReveal && !this.burnDirector.active && !this.completionFx.active) {
+      if (this.cityReveal.start < 0) this.cityReveal.start = elapsedSeconds
+      const revT = Math.min(1, (elapsedSeconds - this.cityReveal.start) / 2.0)
+      const ease = 1 - Math.pow(1 - revT, 3) // cubic ease-out
+      this.camera.position.lerpVectors(this.cityReveal.from, this.cityReveal.to, ease)
+      this.camera.lookAt(0, 0, 0)
+      this.controls.enabled = false
+      // When done, park at the close position — leave cityReveal set until clearReveal().
+    }
+    // ── End city reveal push-in ──
 
     // ── Emergency spawn + expiry (throttled once per sim-minute = 60 sim-sec) ──
     // Only while founded — never over the founding screen. The clock (re)starts each
@@ -409,6 +449,7 @@ export class GlobeEngine {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.worldUnsub?.()
+    this.placeUnsub?.()
     this.burnDirector.dispose()
     this.completionFx.dispose()
     this.placeMarker.dispose()
