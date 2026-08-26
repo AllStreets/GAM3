@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 import { STARTING_FUNDING, STARTING_REPUTATION } from '@/lib/economy'
-import { refuelEfficiencyCost } from '@/lib/upgrades'
+import { refuelEfficiencyCost, refuelEfficiencyFactor } from '@/lib/upgrades'
 import {
   Archetype,
   Leaning,
@@ -129,6 +129,8 @@ export const useAgencyStore = create<AgencyState>((set, get) => ({
 
   upgradeRefuelEfficiency: () => {
     const level = get().refuelEfficiencyLevel
+    // Defence-in-depth: refuse a purchase that wouldn't improve efficiency (past the discount floor).
+    if (refuelEfficiencyFactor(level + 1) >= refuelEfficiencyFactor(level)) return false
     const cost = refuelEfficiencyCost(level)
     if (!get().spendFunding(cost)) return false
     set((s) => ({ refuelEfficiencyLevel: s.refuelEfficiencyLevel + 1 }))

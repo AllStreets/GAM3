@@ -35,7 +35,9 @@ export default function UpgradesPanel() {
   const effDiscount = Math.round((1 - effFactor) * 100)
   const nextFactor = refuelEfficiencyFactor(refuelEfficiencyLevel + 1)
   const nextDiscount = Math.round((1 - nextFactor) * 100)
-  const canAffordEff = funding >= effCost
+  // At the discount floor (0.6), further levels cost more for zero benefit — cap the buy.
+  const atEffCap = nextFactor >= effFactor
+  const canAffordEff = !atEffCap && funding >= effCost
 
   return (
     <>
@@ -121,12 +123,14 @@ export default function UpgradesPanel() {
             <button
               onClick={() => { if (upgradeRefuelEfficiency()) { audio.uiTick() } }}
               disabled={!canAffordEff}
-              title={!canAffordEff ? `§${effCost - funding} short` : undefined}
+              title={atEffCap ? 'Refuel efficiency maxed' : !canAffordEff ? `§${effCost - funding} short` : undefined}
               className="w-full rounded border border-white/15 px-2 py-1 text-[10px] text-left transition enabled:hover:border-[#a78bfa]/50 disabled:opacity-30"
             >
-              {canAffordEff
-                ? `Lv${refuelEfficiencyLevel} → Lv${refuelEfficiencyLevel + 1} · −${nextDiscount}% · §${effCost}`
-                : `Lv${refuelEfficiencyLevel + 1} · §${effCost} short §${effCost - funding}`}
+              {atEffCap
+                ? `MAX EFFICIENCY · −${effDiscount}%`
+                : canAffordEff
+                  ? `Lv${refuelEfficiencyLevel} → Lv${refuelEfficiencyLevel + 1} · −${nextDiscount}% · §${effCost}`
+                  : `Lv${refuelEfficiencyLevel + 1} · §${effCost} short §${effCost - funding}`}
             </button>
           </div>
         </div>
