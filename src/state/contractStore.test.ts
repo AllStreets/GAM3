@@ -453,6 +453,162 @@ describe('contractStore', () => {
   })
 })
 
+// ─── milestone accrual on completion ─────────────────────────────────────────
+
+describe('contractStore — milestone accrual on completion', () => {
+  beforeEach(() => {
+    useContractStore.getState().resetForTest()
+    useAgencyStore.getState().resetForTest()
+    useGameStore.getState().resetForTest()
+    useStoryStore.getState().resetForTest()
+  })
+
+  it('5th completion triggers a relief grant (milestone income is separate from contract award)', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+
+    // Complete 4 contracts without reaching the milestone
+    for (let i = 0; i < 4; i++) {
+      useContractStore.getState().resetForTest()
+      useContractStore.getState().setAvailable([mk({ id: `c${i}`, lat: sp.lat, lon: sp.lon })])
+      useContractStore.getState().accept(`c${i}`)
+      useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    }
+    expect(useAgencyStore.getState().milestones.completed).toBe(4)
+    expect(useAgencyStore.getState().milestones.refitTokens).toBe(0)
+
+    // Record funding before the 5th completion (which triggers the milestone)
+    const fundingBefore5th = useAgencyStore.getState().funding
+
+    // 5th completion
+    useContractStore.getState().resetForTest()
+    useContractStore.getState().setAvailable([mk({ id: 'c5', lat: sp.lat, lon: sp.lon })])
+    useContractStore.getState().accept('c5')
+    const { completed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(completed).toHaveLength(1)
+    expect(useAgencyStore.getState().milestones.completed).toBe(5)
+
+    // Milestone token was granted
+    expect(useAgencyStore.getState().milestones.refitTokens).toBe(1)
+
+    // Funding increased by MORE than the contract award alone (relief grant was added)
+    const fundingAfter = useAgencyStore.getState().funding
+    // Relief grant at 5th = §200 (in addition to the contract award)
+    expect(fundingAfter - fundingBefore5th).toBeGreaterThan(200) // contract award + §200 grant
+  })
+
+  it('5th completion emits a relief-grant dispatch', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // Fast-forward to 5 completions
+    for (let i = 0; i < 5; i++) {
+      useContractStore.getState().resetForTest()
+      useStoryStore.getState().resetForTest()
+      useContractStore.getState().setAvailable([mk({ id: `c${i}`, lat: sp.lat, lon: sp.lon })])
+      useContractStore.getState().accept(`c${i}`)
+      useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    }
+    // After 5th completion, there should be a relief-grant dispatch
+    const dispatches = useStoryStore.getState().dispatches
+    expect(dispatches.some((d) => d.text.match(/relief grant/i))).toBe(true)
+    expect(dispatches.some((d) => d.text.match(/refit token/i))).toBe(true)
+  })
+})
+
+// ─── stuck backstop ───────────────────────────────────────────────────────────
+
+describe('contractStore — stuck backstop', () => {
+  beforeEach(() => {
+    useContractStore.getState().resetForTest()
+    useAgencyStore.getState().resetForTest()
+    useGameStore.getState().resetForTest()
+    useStoryStore.getState().resetForTest()
+  })
+
+  it('fires emergency relief when funds=0, tokens=0, and agency is truly stuck', () => {
+    // Set up an active contract that the fleet cannot reach
+    useContractStore.getState().setAvailable([mk({ id: 'stuck-c', lat: 89, lon: 0 })])
+    useContractStore.getState().accept('stuck-c')
+    // Override deadline to be far future
+    useContractStore.setState((s) => ({
+      contracts: s.contracts.map((c) => c.id === 'stuck-c' ? { ...c, deadline: FAR_FUTURE } : c),
+    }))
+
+    // Drain all satellites and set funds to 0 so agency is stuck
+    useGameStore.setState({
+      satellites: useGameStore.getState().satellites.map((s) => ({ ...s, fuel: 0 })),
+    })
+    useAgencyStore.setState({ funding: 0 })
+
+    // Ensure reliefEmergencyUsed is false (default)
+    expect(useAgencyStore.getState().reliefEmergencyUsed).toBe(false)
+
+    // Evaluate — the backstop should fire
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+
+    // Agency should have received emergency relief
+    expect(useAgencyStore.getState().funding).toBeGreaterThan(0)
+    // reliefEmergencyUsed should be true (guard engaged)
+    expect(useAgencyStore.getState().reliefEmergencyUsed).toBe(true)
+    // A dispatch should have been emitted
+    const dispatches = useStoryStore.getState().dispatches
+    expect(dispatches.some((d) => d.text.match(/emergency relief/i))).toBe(true)
+  })
+
+  it('does NOT fire a second time (reliefEmergencyUsed guard prevents spam)', () => {
+    useContractStore.getState().setAvailable([mk({ id: 'stuck-c', lat: 89, lon: 0 })])
+    useContractStore.getState().accept('stuck-c')
+    useContractStore.setState((s) => ({
+      contracts: s.contracts.map((c) => c.id === 'stuck-c' ? { ...c, deadline: FAR_FUTURE } : c),
+    }))
+    useGameStore.setState({
+      satellites: useGameStore.getState().satellites.map((s) => ({ ...s, fuel: 0 })),
+    })
+    useAgencyStore.setState({ funding: 0 })
+
+    // First evaluate — fires the backstop
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    const fundingAfterFirst = useAgencyStore.getState().funding
+    expect(fundingAfterFirst).toBeGreaterThan(0)
+
+    // Drain funding back to 0 to re-create the stuck condition
+    useAgencyStore.setState({ funding: 0 })
+
+    // Second evaluate — guard should prevent another drop
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5001)
+    // Funding should remain 0 (no second drop)
+    expect(useAgencyStore.getState().funding).toBe(0)
+  })
+
+  it('does NOT fire when agency has funds', () => {
+    useContractStore.getState().setAvailable([mk({ id: 'has-funds-c', lat: 89, lon: 0 })])
+    useContractStore.getState().accept('has-funds-c')
+    useContractStore.setState((s) => ({
+      contracts: s.contracts.map((c) => c.id === 'has-funds-c' ? { ...c, deadline: FAR_FUTURE } : c),
+    }))
+    useGameStore.setState({
+      satellites: useGameStore.getState().satellites.map((s) => ({ ...s, fuel: 0 })),
+    })
+    useAgencyStore.setState({ funding: 500 }) // has funds
+
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    // Funding should remain 500 (backstop did not fire)
+    expect(useAgencyStore.getState().funding).toBe(500)
+  })
+
+  it('does NOT fire when there are no active contracts', () => {
+    // No active contracts — agency is not "stuck" per the isAgencyStuck definition
+    useAgencyStore.setState({ funding: 0 })
+    useGameStore.setState({
+      satellites: useGameStore.getState().satellites.map((s) => ({ ...s, fuel: 0 })),
+    })
+    const dispatchCountBefore = useStoryStore.getState().dispatches.length
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(useStoryStore.getState().dispatches.length).toBe(dispatchCountBefore)
+    expect(useAgencyStore.getState().funding).toBe(0)
+  })
+})
+
 // ─── standDown ───────────────────────────────────────────────────────────────
 
 describe('contractStore.standDown', () => {

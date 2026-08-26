@@ -13,6 +13,7 @@ import {
 import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
 import { scoreManeuver, detectTrickShot, type ManeuverScore } from '@/lib/maneuverScore'
 import { useContractStore } from '@/state/contractStore'
+import { useStoryStore } from '@/state/storyStore'
 import {
   type Conjunction, shouldSpawnConjunction, makeConjunction,
   isResolvedByBurn, isExpired,
@@ -130,6 +131,13 @@ interface GameState {
   clearLoss(): void
   /** Called every engine tick: if emergency is expired, lose the satellite. */
   tickEmergency(now: number): void
+  /**
+   * Emergency refit: spend a refit token from the agency to fully refuel a satellite
+   * for FREE. Returns true if a token was available and the satellite exists.
+   * Returns false if no token or the satellite is already full.
+   * Emits a story dispatch on success.
+   */
+  emergencyRefit(satId: string): boolean
   resetForTest(): void
 }
 
@@ -420,6 +428,33 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (isExpired(emergency, now)) {
       get().loseSatellite(emergency.satId)
     }
+  },
+
+  emergencyRefit: (satId) => {
+    const sat = get().satellites.find((s) => s.id === satId)
+    if (!sat) return false
+    if (sat.fuel >= sat.fuelCapacity) return false // already full
+
+    // Attempt to spend a token from the agency.
+    if (!useAgencyStore.getState().spendRefitToken()) return false
+
+    // Fully refuel for free.
+    set((s) => ({
+      satellites: s.satellites.map((x) =>
+        x.id === satId ? { ...x, fuel: x.fuelCapacity } : x,
+      ),
+    }))
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
+
+    // Emit a story dispatch.
+    useStoryStore.getState().addDispatch({
+      id: `emergency-refit-${satId}-${Date.now()}`,
+      at: Date.now(),
+      text: `Emergency refit — ${sat.name} fully fuelled.`,
+      source: 'story',
+    })
+
+    return true
   },
 
   // ── End emergency actions ──────────────────────────────────────────────────

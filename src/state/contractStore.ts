@@ -21,6 +21,8 @@ import {
 } from '@/lib/contractObjective'
 import { rivalEtaSec, applyRaceResult } from '@/lib/rival'
 import { refuelPricePerDv, SATELLITE_PRICE } from '@/lib/economy'
+import { isAgencyStuck } from '@/lib/recovery'
+import { fleetReachability } from '@/lib/reachability'
 
 const KEY = 'hyperion-contracts-v1'
 
@@ -349,6 +351,31 @@ export const useContractStore = create<ContractState>((set, get) => ({
           })
         }
 
+        // ── Milestone accrual (SEPARATE from the single contract award above) ──
+        // Called on every completion; only grants funding/token on 5th, 10th, … tier.
+        {
+          const { grantedFunding, grantedTokens } = useAgencyStore.getState().recordCompletionMilestone()
+          if (grantedFunding > 0 || grantedTokens > 0) {
+            const storyStore = useStoryStore.getState()
+            if (grantedFunding > 0) {
+              storyStore.addDispatch({
+                id: `relief-grant-${c.id}-${Date.now()}`,
+                at: Date.now(),
+                text: `Relief grant secured: §${grantedFunding}`,
+                source: 'story',
+              })
+            }
+            if (grantedTokens > 0) {
+              storyStore.addDispatch({
+                id: `refit-token-${c.id}-${Date.now()}`,
+                at: Date.now(),
+                text: `Emergency-refit token earned.`,
+                source: 'story',
+              })
+            }
+          }
+        }
+
         // Last completion wins if multiple contracts complete in one eval tick.
         pendingCompletion = {
           contractId: c.id,
@@ -395,6 +422,46 @@ export const useContractStore = create<ContractState>((set, get) => ({
       set({ contracts: bounded, ...(pendingCompletion ? { lastCompletion: pendingCompletion } : {}) })
       save(get)
     }
+
+    // ── Stuck backstop (hard floor) ─────────────────────────────────────────
+    // If the agency is completely stuck AND out of funds AND has no refit
+    // tokens AND the backstop hasn't already fired this episode, grant a
+    // minimal emergency relief drop so the game can always continue.
+    const agencyNow = useAgencyStore.getState()
+    if (
+      agencyNow.funding === 0 &&
+      agencyNow.milestones.refitTokens === 0 &&
+      !agencyNow.reliefEmergencyUsed
+    ) {
+      const fleet = useGameStore.getState().satellites
+      const activeContracts = bounded.filter((c) => c.status === 'active')
+      if (activeContracts.length > 0) {
+        // Compute bestApproxDvMs per active contract (from fleetReachability).
+        const activeTargetsBestDv = activeContracts.map((c) => {
+          const reach = fleetReachability(fleet, { lat: c.lat, lon: c.lon })
+          return reach.reachable ? reach.bestApproxDvMs : null
+        })
+        const pricePerDv = refuelPricePerDv(agencyNow.refuelEfficiencyLevel ?? 0)
+        const stuck = isAgencyStuck({
+          fleet,
+          funds: agencyNow.funding,
+          activeTargetsBestDv,
+          satellitePrice: SATELLITE_PRICE,
+          pricePerDv,
+        })
+        if (stuck) {
+          const EMERGENCY_AMOUNT = 150
+          agencyNow.grantEmergencyRelief(EMERGENCY_AMOUNT)
+          useStoryStore.getState().addDispatch({
+            id: `emergency-relief-drop-${Date.now()}`,
+            at: Date.now(),
+            text: `Emergency relief drop authorised — §${EMERGENCY_AMOUNT} to keep operations alive.`,
+            source: 'story',
+          })
+        }
+      }
+    }
+
     return { completed, failed }
   },
 

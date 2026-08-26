@@ -44,8 +44,10 @@ export default function FleetPanel() {
   const resetBurnPlan = useGameStore((s) => s.resetBurnPlan)
   const beginBurn = useGameStore((s) => s.beginBurn)
   const refuelSatellite = useGameStore((s) => s.refuelSatellite)
+  const emergencyRefit = useGameStore((s) => s.emergencyRefit)
   const buySatellite = useGameStore((s) => s.buySatellite)
   const funding = useAgencyStore((s) => s.funding)
+  const refitTokens = useAgencyStore((s) => s.milestones.refitTokens)
   const contracts = useContractStore((s) => s.contracts)
   const targetId = useContractStore((s) => s.targetId)
   const target =
@@ -227,6 +229,24 @@ export default function FleetPanel() {
                   </button>
                 )}
               </div>
+            )
+          })()}
+          {selected && (() => {
+            const isFull = selected.fuelCapacity - selected.fuel <= 0
+            const hasTokens = refitTokens > 0
+            const disabled = isFull || !hasTokens
+            const reason = isFull ? 'tank full' : !hasTokens ? 'no tokens' : ''
+            return (
+              <button
+                onClick={() => { if (!disabled && emergencyRefit(selected.id)) audio.alert() }}
+                disabled={disabled}
+                title={disabled ? `EMERGENCY REFIT — ${reason}` : `Spend 1 refit token to fully refuel ${selected.name} for free`}
+                className="rounded border border-[#f97316]/40 px-2 py-1 text-[11px] text-[#f97316] transition enabled:hover:bg-[#f97316]/10 disabled:opacity-30"
+              >
+                {disabled && reason
+                  ? `EMERGENCY REFIT — ${reason}`
+                  : `EMERGENCY REFIT (${refitTokens})`}
+              </button>
             )
           })()}
           <button

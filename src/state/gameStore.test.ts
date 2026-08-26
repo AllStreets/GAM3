@@ -3,6 +3,7 @@ import { useGameStore, burnCost, previewElements } from './gameStore'
 import { apoapsis } from '@/lib/orbits'
 import { seedCapability } from '@/lib/satelliteMeta'
 import { saveJSON } from '@/lib/persist'
+import { useStoryStore } from './storyStore'
 
 beforeEach(() => {
   useGameStore.getState().resetForTest()
@@ -403,5 +404,84 @@ describe('satellite capabilities and service records', () => {
     expect(sats[0].record).toMatchObject({ contractsCompleted: 0, notablePasses: [], commissionedAt: 0 })
     expect(sats[1].capability).toBe(seedCapability(1))
     expect(sats[1].record).toMatchObject({ contractsCompleted: 0, notablePasses: [], commissionedAt: 0 })
+  })
+})
+
+// ─── emergencyRefit ───────────────────────────────────────────────────────────
+
+describe('gameStore.emergencyRefit', () => {
+  beforeEach(() => {
+    useGameStore.getState().resetForTest()
+    useAgencyStore.getState().resetForTest()
+    useStoryStore.getState().resetForTest()
+  })
+
+  it('returns false when no refit token is available', () => {
+    const sat = useGameStore.getState().satellites[0]
+    // Drain some fuel so it's not full
+    useGameStore.setState({
+      satellites: useGameStore.getState().satellites.map((s) =>
+        s.id === sat.id ? { ...s, fuel: 500 } : s,
+      ),
+    })
+    // No tokens available (default 0)
+    expect(useGameStore.getState().emergencyRefit(sat.id)).toBe(false)
+    // Fuel should be unchanged
+    expect(useGameStore.getState().satellites[0].fuel).toBe(500)
+  })
+
+  it('returns false when the satellite is already at full fuel', () => {
+    // Earn a refit token
+    for (let i = 0; i < 5; i++) useAgencyStore.getState().recordCompletionMilestone()
+    const sat = useGameStore.getState().satellites[0]
+    // Satellite is at full fuel by default
+    expect(sat.fuel).toBe(sat.fuelCapacity)
+    expect(useGameStore.getState().emergencyRefit(sat.id)).toBe(false)
+    // Token should NOT have been spent
+    expect(useAgencyStore.getState().milestones.refitTokens).toBe(1)
+  })
+
+  it('fully refuels a drained satellite for free and consumes 1 token', () => {
+    // Earn a refit token
+    for (let i = 0; i < 5; i++) useAgencyStore.getState().recordCompletionMilestone()
+    expect(useAgencyStore.getState().milestones.refitTokens).toBe(1)
+
+    // Drain the first satellite
+    const sat = useGameStore.getState().satellites[0]
+    useGameStore.setState({
+      satellites: useGameStore.getState().satellites.map((s) =>
+        s.id === sat.id ? { ...s, fuel: 100 } : s,
+      ),
+    })
+
+    const fundingBefore = useAgencyStore.getState().funding
+    const ok = useGameStore.getState().emergencyRefit(sat.id)
+    expect(ok).toBe(true)
+
+    // Satellite is fully refuelled
+    const satAfter = useGameStore.getState().satellites.find((s) => s.id === sat.id)!
+    expect(satAfter.fuel).toBe(satAfter.fuelCapacity)
+
+    // Token was consumed
+    expect(useAgencyStore.getState().milestones.refitTokens).toBe(0)
+
+    // No funding was spent
+    expect(useAgencyStore.getState().funding).toBe(fundingBefore)
+  })
+
+  it('emits a story dispatch mentioning the satellite name', () => {
+    // Earn a token and drain the satellite
+    for (let i = 0; i < 5; i++) useAgencyStore.getState().recordCompletionMilestone()
+    const sat = useGameStore.getState().satellites[0]
+    useGameStore.setState({
+      satellites: useGameStore.getState().satellites.map((s) =>
+        s.id === sat.id ? { ...s, fuel: 100 } : s,
+      ),
+    })
+    useGameStore.getState().emergencyRefit(sat.id)
+    const dispatches = useStoryStore.getState().dispatches
+    expect(dispatches.length).toBeGreaterThan(0)
+    expect(dispatches[0].text).toMatch(/emergency refit/i)
+    expect(dispatches[0].text).toContain(sat.name)
   })
 })
