@@ -10,6 +10,7 @@ import AgencyBar from '@/components/AgencyBar'
 import ContractsPanel from '@/components/ContractsPanel'
 import InterceptReadout from '@/components/InterceptReadout'
 import GuidePanel from '@/components/GuidePanel'
+import SettingsPanel from '@/components/SettingsPanel'
 import GuidanceHint from '@/components/GuidanceHint'
 import Walkthrough from '@/components/Walkthrough'
 import CompletionCinematic from '@/components/CompletionCinematic'
@@ -71,6 +72,7 @@ export default function Hud() {
       <GuidanceHint />
       <InterceptReadout />
       <GuidePanel />
+      <SettingsPanel />
       <Walkthrough />
       <FoundingScreen />
       <ColdOpenScreen />
