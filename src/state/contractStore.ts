@@ -87,6 +87,11 @@ export interface Contract {
   completedBy?: string
   matched?: boolean
   /**
+   * Transient fleet-reachability annotation — computed when building/refreshing
+   * available contracts and on fleet change. Not persisted (recomputed each session).
+   */
+  reach?: import('@/lib/reachability').FleetReach
+  /**
    * If set, this contract is contested — the rival has an ETA and whoever
    * reaches the target first wins. rivalEtaSec is measured from acceptedAtSec
    * (sim-time when the player accepted). If rivalEtaSec is elapsed before the

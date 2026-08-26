@@ -14,6 +14,9 @@ import type { Archetype } from '@/lib/archetype'
 import { ARCHETYPE_COLOR } from '@/lib/archetype'
 import { Chip } from '@/components/ui/Chip'
 import type { Objective, ObjectiveProgress } from '@/lib/contractObjective'
+import { fleetReachability } from '@/lib/reachability'
+import type { Contract } from '@/state/contractStore'
+import type { Satellite } from '@/state/gameStore'
 
 const ARCHETYPE_LABEL: Record<Archetype, string> = {
   relief:   'RELIEF',
@@ -42,6 +45,29 @@ function progressLabel(o: Objective, p: ObjectiveProgress): string {
 
 // Rival accent colour (consistent with DispatchesFeed)
 const RIVAL_COLOR = '#ffa14a'
+
+/** Derive the satellite short-name label from an id (e.g. "hyp-2" → "HYPERION-2"). */
+function satLabel(sats: { id: string; name: string }[], satId: string): string {
+  return sats.find((s) => s.id === satId)?.name ?? satId.toUpperCase()
+}
+
+/** Reach chip shown on each available/player-created contract. */
+function ReachChip({ contract, sats }: { contract: Contract; sats: Satellite[] }) {
+  // Prefer the pre-computed annotation; fall back to computing in-panel.
+  const reach = contract.reach ?? fleetReachability(sats, { lat: contract.lat, lon: contract.lon })
+  if (reach.reachable && reach.bestSatId !== null) {
+    const label = satLabel(sats, reach.bestSatId)
+    const dv = reach.bestApproxDvMs ?? 0
+    return (
+      <Chip color="#4ade80">
+        {'◀ '}{label}{' · ~'}{dv}{' m/s'}
+      </Chip>
+    )
+  }
+  return (
+    <Chip color="#f87171">beyond coverage</Chip>
+  )
+}
 
 function rivalCountdown(acceptedAtSec: number, rivalEtaSecValue: number, now: number): string {
   // ETA is measured in sim-seconds from accept time; now is wall-clock sim time.
@@ -100,12 +126,13 @@ export default function ContractsPanel() {
                   {c.objective && (
                     <p className="mb-1 text-[9px] leading-relaxed opacity-50 italic line-clamp-2">{c.objective}</p>
                   )}
-                  <p className="mb-1 flex items-center gap-1.5">
+                  <p className="mb-1 flex items-center gap-1.5 flex-wrap">
                     <Chip color={archColor}>{archLabel}</Chip>
                     <Chip className="opacity-60">{capLabel}</Chip>
                     {isMatch && (
                       <span className="text-[9px] text-yellow-400 opacity-80">★ match</span>
                     )}
+                    <ReachChip contract={c} sats={satellites} />
                   </p>
                   <p className="flex items-center justify-between">
                     <span className="tabular-nums opacity-70" style={{ color: 'var(--accent)' }}>§{c.reward.funding} · REP {c.reward.reputation}</span>

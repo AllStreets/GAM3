@@ -15,6 +15,7 @@ import type { PlaceImage } from '@/lib/placeImage'
 import { buildPlaceContract } from '@/lib/placeContract'
 import { simNow } from '@/lib/simTime'
 import { orbitalPeriod, ER_KM } from '@/lib/orbits'
+import { useGameStore } from '@/state/gameStore'
 
 const ARCHETYPE_LABEL: Record<string, string> = {
   relief: 'RELIEF',
@@ -171,6 +172,7 @@ export default function PlaceCard() {
         severity: maxNearbySeverity,
         simNow: simNow(),
         periodSec,
+        sats: useGameStore.getState().satellites,
       })
 
       useContractStore.getState().addContract(contract)
