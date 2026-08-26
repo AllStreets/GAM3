@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
 import { useGameStore } from '@/state/gameStore'
+import { PersistBridge } from '@/components/PersistBridge'
 
 /** Hydrates persisted stores after mount so SSR and first client render match (no hydration error). */
 export function useHydrated(): boolean {
@@ -16,3 +17,6 @@ export function useHydrated(): boolean {
   }, [])
   return hydrated
 }
+
+/** Mount this alongside useHydrated() to wire up the server persistence bridge. */
+export { PersistBridge }
