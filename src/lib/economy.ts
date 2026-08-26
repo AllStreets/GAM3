@@ -1,3 +1,5 @@
+import { refuelEfficiencyFactor } from '@/lib/upgrades'
+
 export const STARTING_FUNDING = 500
 export const STARTING_REPUTATION = 0
 export const SATELLITE_PRICE = 800
@@ -34,14 +36,13 @@ export function contractDeadline(simNow: number, periodSec: number): number {
  * Cost per m/s of delta-v when refuelling.
  * At efficiency level 0 (default) this equals the base rate (0.6 §/m/s) so
  * ceil(missing * refuelPricePerDv(0)) === refuelPrice(missing) exactly.
- * Higher efficiency levels (wired in by Plan T4) reduce the rate.
+ * Higher efficiency levels (via Plan T4 agency upgrade) reduce the rate via
+ * refuelEfficiencyFactor (10% per level, floored at 0.6).
  */
 export function refuelPricePerDv(efficiencyLevel = 0): number {
-  // Base rate: 0.6 §/m/s  (matches existing refuelPrice)
-  // Each efficiency level reduces cost by 10%, floored at 0.1 §/m/s.
+  // Base rate: 0.6 §/m/s  (matches existing refuelPrice at level 0)
   const base = 0.6
-  const rate = base * Math.pow(0.9, Math.max(0, efficiencyLevel))
-  return Math.max(0.1, rate)
+  return base * refuelEfficiencyFactor(efficiencyLevel)
 }
 
 /**

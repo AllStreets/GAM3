@@ -35,6 +35,7 @@ function makeSat(id: string, el: OrbitalElements): Satellite {
     fuel: 1500, fuelCapacity: 1500,
     capability: 'imaging',
     record: { contractsCompleted: 0, notablePasses: [], commissionedAt: 0 },
+    tankLevel: 0,
   }
 }
 

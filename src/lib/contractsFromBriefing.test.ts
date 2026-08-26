@@ -16,6 +16,7 @@ const issSat: Satellite = {
   fuel: 1800, fuelCapacity: 1800,
   capability: 'imaging',
   record: { contractsCompleted: 0, notablePasses: [], commissionedAt: 0 },
+  tankLevel: 0,
 }
 
 /** Polar satellite: inclination 97.5° — reaches ~87° latitude */
@@ -25,6 +26,7 @@ const polarSat: Satellite = {
   fuel: 1500, fuelCapacity: 1500,
   capability: 'imaging',
   record: { contractsCompleted: 0, notablePasses: [], commissionedAt: 0 },
+  tankLevel: 0,
 }
 
 describe('contractsFromBriefing', () => {

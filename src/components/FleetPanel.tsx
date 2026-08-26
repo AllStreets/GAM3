@@ -12,6 +12,7 @@ import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
 import { CAPABILITY_LABEL, CAPABILITY_COLOR } from '@/lib/satelliteMeta'
 import { Chip } from '@/components/ui/Chip'
 import SatelliteRecordCard from '@/components/SatelliteRecordCard'
+import UpgradesPanel from '@/components/UpgradesPanel'
 
 function telemetry(sat: Satellite) {
   const { position, velocity } = propagate(sat.elements, simNow())
@@ -48,6 +49,7 @@ export default function FleetPanel() {
   const buySatellite = useGameStore((s) => s.buySatellite)
   const funding = useAgencyStore((s) => s.funding)
   const refitTokens = useAgencyStore((s) => s.milestones.refitTokens)
+  const refuelEfficiencyLevel = useAgencyStore((s) => s.refuelEfficiencyLevel)
   const contracts = useContractStore((s) => s.contracts)
   const targetId = useContractStore((s) => s.targetId)
   const target =
@@ -148,6 +150,8 @@ export default function FleetPanel() {
                         <span>record</span>
                       </button>
                     )}
+                    {/* Upgrades panel — refit toggle below record on selected row */}
+                    {isSel && <UpgradesPanel />}
                   </li>
                 )
               })
@@ -187,7 +191,7 @@ export default function FleetPanel() {
         <div className="mt-3 flex flex-col gap-2 border-t border-white/10 pt-3">
           {selected && (() => {
             const missing = selected.fuelCapacity - selected.fuel
-            const pricePerDv = refuelPricePerDv(0) // efficiency level 0; T4 will thread the level in
+            const pricePerDv = refuelPricePerDv(refuelEfficiencyLevel)
             const affordDv = affordableRefuelDv(missing, funding, pricePerDv)
             const affordCost = Math.ceil(affordDv * pricePerDv)
             const fullCost = refuelPrice(missing)

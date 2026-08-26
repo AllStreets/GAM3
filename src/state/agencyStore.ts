@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 import { STARTING_FUNDING, STARTING_REPUTATION } from '@/lib/economy'
+import { refuelEfficiencyCost } from '@/lib/upgrades'
 import {
   Archetype,
   Leaning,
@@ -30,6 +31,8 @@ interface Persisted {
   milestones: Milestones
   /** Guards the stuck-backstop from firing repeatedly in one stuck episode. */
   reliefEmergencyUsed: boolean
+  /** Agency-wide refuel efficiency upgrade level (0 = base rate, no discount). */
+  refuelEfficiencyLevel: number
 }
 
 const DEFAULTS: Persisted = {
@@ -42,15 +45,10 @@ const DEFAULTS: Persisted = {
   leaning: ZERO_LEANING,
   milestones: freshMilestones(),
   reliefEmergencyUsed: false,
+  refuelEfficiencyLevel: 0,
 }
 
 interface AgencyState extends Persisted {
-  /**
-   * Refuel efficiency upgrade level (0 = base, increased by Plan T4).
-   * Stored here as a transient optional so gameStore / contractStore can read it
-   * without TS errors; T4 will wire it into Persisted and DEFAULTS.
-   */
-  refuelEfficiencyLevel?: number
   found(name: string, emblemId: string, colorway: string): void
   addFunding(n: number): void
   spendFunding(n: number): boolean
@@ -71,6 +69,12 @@ interface AgencyState extends Persisted {
    * Emergency-relief drop (stuck backstop). Calls addFunding internally.
    */
   grantEmergencyRelief(amount: number): void
+  /**
+   * Upgrade agency-wide refuel efficiency by one level.
+   * Costs `refuelEfficiencyCost(refuelEfficiencyLevel)`.
+   * Returns true if the upgrade was applied (false: insufficient funding).
+   */
+  upgradeRefuelEfficiency(): boolean
   hydrate(): void
   resetForTest(): void
 }
@@ -82,6 +86,7 @@ function persistOf(s: AgencyState): Persisted {
     leaning: s.leaning,
     milestones: s.milestones,
     reliefEmergencyUsed: s.reliefEmergencyUsed,
+    refuelEfficiencyLevel: s.refuelEfficiencyLevel,
   }
 }
 
@@ -122,6 +127,15 @@ export const useAgencyStore = create<AgencyState>((set, get) => ({
     saveJSON(KEY, persistOf(get()))
   },
 
+  upgradeRefuelEfficiency: () => {
+    const level = get().refuelEfficiencyLevel
+    const cost = refuelEfficiencyCost(level)
+    if (!get().spendFunding(cost)) return false
+    set((s) => ({ refuelEfficiencyLevel: s.refuelEfficiencyLevel + 1 }))
+    saveJSON(KEY, persistOf(get()))
+    return true
+  },
+
   spendFunding: (n) => {
     if (n > get().funding) return false
     set((s) => ({ funding: s.funding - n }))
@@ -147,12 +161,14 @@ export const useAgencyStore = create<AgencyState>((set, get) => ({
       // Back-compat: old saves won't have milestones or reliefEmergencyUsed
       milestones: saved.milestones ?? freshMilestones(),
       reliefEmergencyUsed: saved.reliefEmergencyUsed ?? false,
+      // Back-compat: old saves won't have refuelEfficiencyLevel
+      refuelEfficiencyLevel: saved.refuelEfficiencyLevel ?? 0,
     })
   },
 
   resetForTest: () => {
     clearKey(KEY)
-    set({ ...DEFAULTS, milestones: freshMilestones(), reliefEmergencyUsed: false })
+    set({ ...DEFAULTS, milestones: freshMilestones(), reliefEmergencyUsed: false, refuelEfficiencyLevel: 0 })
   },
 }))
 

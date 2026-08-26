@@ -4,6 +4,7 @@ import {
 } from '@/lib/orbits'
 import { recordBurn, recordAbort } from '@/lib/profile'
 import { refuelPrice, SATELLITE_PRICE, refuelPricePerDv, affordableRefuelDv } from '@/lib/economy'
+import { tankUpgradeCost, tankUpgradeDv, RETROFIT_COST } from '@/lib/upgrades'
 import { useAgencyStore } from '@/state/agencyStore'
 import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 import {
@@ -28,6 +29,8 @@ export interface Satellite {
   fuelCapacity: number
   capability: Capability
   record: ServiceRecord
+  /** Tank upgrade level — 0 at launch, incremented by upgradeTank(). */
+  tankLevel: number
 }
 
 export interface BurnPlan {
@@ -44,11 +47,11 @@ const FLEET_KEY = 'hyperion-fleet-v1'
 
 function seedFleet(): Satellite[] {
   return [
-    { id: 'hyp-1', name: 'HYPERION-1', elements: { a: (6371 + 420) / 6371, e: 0.0012, i: deg(51.6), raan: 0.8, argp: 0.3, m0: 0, epoch: 0 }, fuel: 1800, fuelCapacity: 1800, capability: seedCapability(0), record: freshRecord(0) },
-    { id: 'hyp-2', name: 'HYPERION-2', elements: { a: (6371 + 780) / 6371, e: 0.002, i: deg(97.5), raan: 2.4, argp: 1.1, m0: 2.0, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(1), record: freshRecord(0) },
-    { id: 'hyp-3', name: 'HYPERION-3', elements: { a: (6371 + 550) / 6371, e: 0.001, i: deg(28), raan: 4.3, argp: 0.7, m0: 3.1, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(2), record: freshRecord(0) },
-    { id: 'hyp-4', name: 'HYPERION-4', elements: { a: (6371 + 650) / 6371, e: 0.0015, i: deg(63), raan: 1.6, argp: 2.0, m0: 5.0, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(3), record: freshRecord(0) },
-    { id: 'hyp-5', name: 'HYPERION-5', elements: { a: (6371 + 500) / 6371, e: 0.001, i: deg(82), raan: 5.5, argp: 1.4, m0: 1.7, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(4), record: freshRecord(0) },
+    { id: 'hyp-1', name: 'HYPERION-1', elements: { a: (6371 + 420) / 6371, e: 0.0012, i: deg(51.6), raan: 0.8, argp: 0.3, m0: 0, epoch: 0 }, fuel: 1800, fuelCapacity: 1800, capability: seedCapability(0), record: freshRecord(0), tankLevel: 0 },
+    { id: 'hyp-2', name: 'HYPERION-2', elements: { a: (6371 + 780) / 6371, e: 0.002, i: deg(97.5), raan: 2.4, argp: 1.1, m0: 2.0, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(1), record: freshRecord(0), tankLevel: 0 },
+    { id: 'hyp-3', name: 'HYPERION-3', elements: { a: (6371 + 550) / 6371, e: 0.001, i: deg(28), raan: 4.3, argp: 0.7, m0: 3.1, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(2), record: freshRecord(0), tankLevel: 0 },
+    { id: 'hyp-4', name: 'HYPERION-4', elements: { a: (6371 + 650) / 6371, e: 0.0015, i: deg(63), raan: 1.6, argp: 2.0, m0: 5.0, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(3), record: freshRecord(0), tankLevel: 0 },
+    { id: 'hyp-5', name: 'HYPERION-5', elements: { a: (6371 + 500) / 6371, e: 0.001, i: deg(82), raan: 5.5, argp: 1.4, m0: 1.7, epoch: 0 }, fuel: 1500, fuelCapacity: 1500, capability: seedCapability(4), record: freshRecord(0), tankLevel: 0 },
   ]
 }
 
@@ -112,6 +115,19 @@ interface GameState {
   abortBurn(): void
   refuelSatellite(id: string, dv?: number): boolean
   buySatellite(): boolean
+  /**
+   * Expand a satellite's fuel tank by one level.
+   * Costs `tankUpgradeCost(sat.tankLevel)` funding.
+   * Increases `fuelCapacity` by `tankUpgradeDv(sat.tankLevel)` and bumps `tankLevel`.
+   * Returns true if the upgrade was applied (false: sat not found or insufficient funding).
+   */
+  upgradeTank(satId: string): boolean
+  /**
+   * Retrofit a satellite to a new capability type.
+   * Costs `RETROFIT_COST` funding; no-op (returns false) if already that capability.
+   * Returns true if the retrofit was applied.
+   */
+  retrofitCapability(satId: string, cap: Capability): boolean
   hydrate(): void
   recordContractPass(satId: string, note?: string): void
   bumpStreak(): void
@@ -287,8 +303,40 @@ export const useGameStore = create<GameState>((set, get) => ({
       fuel: 1500, fuelCapacity: 1500,
       capability: fillGapCapability(get().satellites.map((s) => s.capability)),
       record: freshRecord(get().previewAt ?? 0),
+      tankLevel: 0,
     }
     set((s) => ({ satellites: [...s.satellites, sat] }))
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
+    return true
+  },
+
+  upgradeTank: (satId) => {
+    const sat = get().satellites.find((s) => s.id === satId)
+    if (!sat) return false
+    const cost = tankUpgradeCost(sat.tankLevel)
+    if (!useAgencyStore.getState().spendFunding(cost)) return false
+    const dv = tankUpgradeDv(sat.tankLevel)
+    set((s) => ({
+      satellites: s.satellites.map((x) =>
+        x.id === satId
+          ? { ...x, fuelCapacity: x.fuelCapacity + dv, tankLevel: x.tankLevel + 1 }
+          : x,
+      ),
+    }))
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
+    return true
+  },
+
+  retrofitCapability: (satId, cap) => {
+    const sat = get().satellites.find((s) => s.id === satId)
+    if (!sat) return false
+    if (sat.capability === cap) return false
+    if (!useAgencyStore.getState().spendFunding(RETROFIT_COST)) return false
+    set((s) => ({
+      satellites: s.satellites.map((x) =>
+        x.id === satId ? { ...x, capability: cap } : x,
+      ),
+    }))
     saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
     return true
   },
@@ -302,6 +350,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ...s,
       capability: s.capability ?? seedCapability(index),
       record: s.record ?? freshRecord(0),
+      tankLevel: s.tankLevel ?? 0,
     }))
     set({ satellites: backfilled, lastConjunctionAt: raw.lastConjunctionAt ?? 0 })
   },
@@ -412,6 +461,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         fuel: 1500, fuelCapacity: 1500,
         capability: seedCapability(0),
         record: freshRecord(get().previewAt ?? 0),
+        tankLevel: 0,
       }
       set({ satellites: [provisional], emergency: null, lastLoss: { name: sat.name } })
     } else {
