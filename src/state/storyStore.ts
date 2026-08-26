@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 import type { Arc } from '@/lib/storyProgress'
+import { seedRival, type Rival } from '@/lib/rival'
 
 const KEY = 'hyperion-story-v1'
 const MAX_DISPATCHES = 20
@@ -16,19 +17,26 @@ interface Persisted {
   arcs: Arc[]
   dispatches: Dispatch[]
   lastStoryAt: number
+  rival: Rival
 }
 
 const DEFAULTS: Persisted = {
   arcs: [],
   dispatches: [],
   lastStoryAt: 0,
+  rival: seedRival(null),
 }
 
 interface StoryState extends Persisted {
   addDispatch(d: Dispatch): void
   upsertArc(a: Arc): void
+  setRival(r: Rival): void
   hydrate(): void
   resetForTest(): void
+}
+
+function persistPayload(s: Pick<Persisted, 'arcs' | 'dispatches' | 'lastStoryAt' | 'rival'>): Persisted {
+  return { arcs: s.arcs, dispatches: s.dispatches, lastStoryAt: s.lastStoryAt, rival: s.rival }
 }
 
 export const useStoryStore = create<StoryState>((set, get) => ({
@@ -37,14 +45,19 @@ export const useStoryStore = create<StoryState>((set, get) => ({
   addDispatch: (d) => {
     const next = [d, ...get().dispatches].slice(0, MAX_DISPATCHES)
     set({ dispatches: next, lastStoryAt: d.at })
-    saveJSON(KEY, { arcs: get().arcs, dispatches: next, lastStoryAt: d.at })
+    saveJSON(KEY, persistPayload({ ...get(), dispatches: next, lastStoryAt: d.at }))
   },
 
   upsertArc: (a) => {
     const existing = get().arcs.filter((x) => x.id !== a.id)
     const arcs = [...existing, a]
     set({ arcs })
-    saveJSON(KEY, { arcs, dispatches: get().dispatches, lastStoryAt: get().lastStoryAt })
+    saveJSON(KEY, persistPayload({ ...get(), arcs }))
+  },
+
+  setRival: (r) => {
+    set({ rival: r })
+    saveJSON(KEY, persistPayload({ ...get(), rival: r }))
   },
 
   hydrate: () => {
@@ -53,6 +66,8 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       arcs: saved.arcs ?? [],
       dispatches: saved.dispatches ?? [],
       lastStoryAt: saved.lastStoryAt ?? 0,
+      // Back-compat: old saves won't have rival; seed a default
+      rival: saved.rival ?? seedRival(null),
     })
   },
 

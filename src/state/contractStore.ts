@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useGameStore } from '@/state/gameStore'
+import { useStoryStore } from '@/state/storyStore'
 import { maxActiveContracts } from '@/lib/economy'
 import { groundDistanceKm, COMPLETION_RADIUS_KM } from '@/lib/intercept'
 import { simNow } from '@/lib/simTime'
@@ -18,8 +19,30 @@ import {
   type Objective,
   type ObjectiveProgress,
 } from '@/lib/contractObjective'
+import { rivalEtaSec, applyRaceResult } from '@/lib/rival'
 
 const KEY = 'hyperion-contracts-v1'
+
+// ─── Deterministic helpers ───────────────────────────────────────────────────
+
+/** Fast deterministic hash over a string (same algorithm as rival.ts). */
+function hashStr(s: string): number {
+  let h = 17
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) & 0x7fffffff
+  }
+  return h
+}
+
+/**
+ * Deterministically decide whether a contract should be contested by the rival.
+ * ~1-in-4 contracts are contested (hash mod 4 === 0). Never place contracts are
+ * contested (those are player-initiated and feel different from the rival race narrative).
+ */
+function shouldContest(contractId: string, kind: string): boolean {
+  if (kind === 'place') return false
+  return hashStr(contractId) % 4 === 0
+}
 
 export type ContractStatus = 'available' | 'active' | 'completed' | 'failed'
 
@@ -63,6 +86,18 @@ export interface Contract {
   /** Transient — populated on completion, not persisted. */
   completedBy?: string
   matched?: boolean
+  /**
+   * If set, this contract is contested — the rival has an ETA and whoever
+   * reaches the target first wins. rivalEtaSec is measured from acceptedAtSec
+   * (sim-time when the player accepted). If rivalEtaSec is elapsed before the
+   * player completes, the rival claims it.
+   */
+  contested?: {
+    /** Rival ETA in sim-seconds measured from acceptedAtSec. */
+    rivalEtaSec: number
+    /** Sim-time when the player accepted this contract. */
+    acceptedAtSec: number
+  }
 }
 
 interface Persisted {
@@ -129,13 +164,28 @@ export const useContractStore = create<ContractState>((set, get) => ({
     const s = get()
     const c = s.contracts.find((x) => x.id === id)
     if (!c || c.status !== 'available') return false
-    if (c.deadline < simNow()) return false
+    const now = simNow()
+    if (c.deadline < now) return false
     const activeCount = s.contracts.filter((x) => x.status === 'active').length
     if (activeCount >= maxActiveContracts(useAgencyStore.getState().reputation)) return false
+
+    // Determine if this contract is contested (deterministic, ~1-in-4, non-place).
+    // Compute rival ETA relative to the deadline window from acceptance time.
+    const deadlineWindow = c.deadline - now
+    const difficulty = c.reward.reputation / 30 // proxy: higher-rep contracts are harder
+    const contested: Contract['contested'] = shouldContest(c.id, c.kind)
+      ? { rivalEtaSec: rivalEtaSec(c.id, deadlineWindow, difficulty), acceptedAtSec: now }
+      : undefined
+
     set((st) => ({
       contracts: st.contracts.map((x) =>
         x.id === id
-          ? { ...x, status: 'active' as const, progress: x.gameObjective ? freshProgress() : undefined }
+          ? {
+              ...x,
+              status: 'active' as const,
+              progress: x.gameObjective ? freshProgress() : undefined,
+              ...(contested !== undefined ? { contested } : {}),
+            }
           : x,
       ),
       targetId: id,
@@ -202,6 +252,31 @@ export const useContractStore = create<ContractState>((set, get) => ({
         return { ...c, progress: updatedProgress }
       }
 
+      // ── Rival claim check (before player completion) ──────────────────────
+      // For a contested contract, check if the rival's ETA has elapsed before
+      // the player completed this tick. If so, the rival claims it (soft-fail).
+      if (c.contested && !contractReadyToComplete) {
+        const elapsed = simTime - c.contested.acceptedAtSec
+        if (elapsed >= c.contested.rivalEtaSec) {
+          // Rival claimed it — soft-fail with no (or minimal) rep ding.
+          const storyStore = useStoryStore.getState()
+          const rival = storyStore.rival
+          const updatedRival = applyRaceResult(rival, 'rival')
+          storyStore.setRival(updatedRival)
+          storyStore.addDispatch({
+            id: `rival-claim-${c.id}`,
+            at: Date.now(),
+            text: `${rival.name} reached ${c.title} first. Contract reassigned.`,
+            source: 'rival',
+          })
+          // Soft-fail: a small -1 rep note, not the usual -5 expiry penalty.
+          agency.addReputation(-1)
+          const bad = { ...c, status: 'failed' as const }
+          failed.push(bad)
+          return bad
+        }
+      }
+
       if (contractReadyToComplete) {
         // Use the first in-range sat (or any matching sat) to attribute the completion.
         const completingSat =
@@ -241,6 +316,23 @@ export const useContractStore = create<ContractState>((set, get) => ({
         } else {
           useGameStore.getState().recordContractPass(completingSat.id)
         }
+
+        // ── Rival race outcome (player won) ──────────────────────────────────
+        if (c.contested) {
+          const storyStore = useStoryStore.getState()
+          const rival = storyStore.rival
+          const updatedRival = applyRaceResult(rival, 'player')
+          storyStore.setRival(updatedRival)
+          // Small rep bonus for beating the rival.
+          agency.addReputation(2)
+          storyStore.addDispatch({
+            id: `rival-beat-${c.id}`,
+            at: Date.now(),
+            text: `You beat ${rival.name} to ${c.title}. They won't forget that.`,
+            source: 'rival',
+          })
+        }
+
         // Last completion wins if multiple contracts complete in one eval tick.
         pendingCompletion = {
           contractId: c.id,
