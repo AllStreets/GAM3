@@ -4,6 +4,7 @@ import type { Archetype } from '@/lib/archetype'
 import type { Capability } from '@/lib/satelliteMeta'
 import { contractReward, contractDeadline } from '@/lib/economy'
 import { archetypeForKind, capabilityForKind } from '@/lib/contractMeta'
+import { defaultObjective } from '@/lib/contractObjective'
 
 export interface BriefingMission {
   title: string
@@ -22,6 +23,8 @@ function contractForEvent(
   missionArchetype?: Archetype,
   missionCapability?: Capability,
 ): Contract {
+  const arch = missionArchetype ?? archetypeForKind(ev.kind)
+  const cap = missionCapability ?? capabilityForKind(ev.kind)
   return {
     id: `contract-${ev.id}`,
     eventId: ev.id,
@@ -33,8 +36,9 @@ function contractForEvent(
     reward: contractReward(ev.severity),
     status: 'available',
     // Use the mission's AI-proposed values when present; fall back to kind derivation
-    archetype: missionArchetype ?? archetypeForKind(ev.kind),
-    preferredCapability: missionCapability ?? capabilityForKind(ev.kind),
+    archetype: arch,
+    preferredCapability: cap,
+    gameObjective: defaultObjective(ev.kind, cap),
   }
 }
 

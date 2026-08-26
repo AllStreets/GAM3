@@ -12,6 +12,7 @@ import { audio } from '@/audio/AudioEngine'
 import type { Archetype } from '@/lib/archetype'
 import { ARCHETYPE_COLOR } from '@/lib/archetype'
 import { Chip } from '@/components/ui/Chip'
+import type { Objective, ObjectiveProgress } from '@/lib/contractObjective'
 
 const ARCHETYPE_LABEL: Record<Archetype, string> = {
   relief:   'RELIEF',
@@ -23,6 +24,19 @@ function countdown(deadline: number, now: number): string {
   const s = Math.max(0, Math.round((deadline - now) / TIME_SCALE))
   const m = Math.floor(s / 60)
   return m > 0 ? `${m}m ${s % 60}s` : `${s}s`
+}
+
+function progressLabel(o: Objective, p: ObjectiveProgress): string {
+  switch (o.type) {
+    case 'single-pass':
+      return p.done ? 'PASS ✓' : 'AWAITING PASS'
+    case 'multi-pass':
+      return `PASS ${p.passesDone}/${o.params.passes ?? 1}`
+    case 'multi-sat':
+      return `SATS ${p.satsSeen.length}/${o.params.sats ?? 1}`
+    case 'dwell':
+      return `DWELL ${Math.round(p.dwellAccumSec)}/${o.params.dwellSec ?? 60}s`
+  }
 }
 
 export default function ContractsPanel() {
@@ -106,7 +120,16 @@ export default function ContractsPanel() {
               <span className="truncate font-semibold text-[#ffb86b]">{c.title}</span>
               <span className="shrink-0 tabular-nums opacity-70">{now === null ? '' : `T-${countdown(c.deadline, now)}`}</span>
             </p>
-            <p className="opacity-60">Maneuver a satellite over the target · TRACK to view</p>
+            {c.gameObjective ? (
+              <p className="mb-0.5 flex items-center gap-1.5">
+                <Chip color="#a78bfa">{c.gameObjective.label}</Chip>
+                {c.progress && (
+                  <Chip className="opacity-80">{progressLabel(c.gameObjective, c.progress)}</Chip>
+                )}
+              </p>
+            ) : (
+              <p className="opacity-60">Maneuver a satellite over the target · TRACK to view</p>
+            )}
           </button>
         ))}
 

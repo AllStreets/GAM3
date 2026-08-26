@@ -11,6 +11,13 @@ import type { Capability } from '@/lib/satelliteMeta'
 import { simDaysInOrbit } from '@/lib/satelliteMeta'
 import { archetypeForKind, capabilityForKind, matchBonusFunding } from '@/lib/contractMeta'
 import { reliefImpactLine } from '@/lib/reliefImpact'
+import {
+  freshProgress,
+  evaluateObjective,
+  objectiveRewardScale,
+  type Objective,
+  type ObjectiveProgress,
+} from '@/lib/contractObjective'
 
 const KEY = 'hyperion-contracts-v1'
 
@@ -40,6 +47,10 @@ export interface Contract {
   title: string
   /** Optional narrative objective written by AI or fallback; shown in ContractsPanel. */
   objective?: string
+  /** Structured gameplay objective (multi-pass / multi-sat / dwell / single-pass). */
+  gameObjective?: Objective
+  /** Live progress for gameObjective — stored on contract, reset on accept. */
+  progress?: ObjectiveProgress
   kind: string
   lat: number
   lon: number
@@ -119,7 +130,11 @@ export const useContractStore = create<ContractState>((set, get) => ({
     const activeCount = s.contracts.filter((x) => x.status === 'active').length
     if (activeCount >= maxActiveContracts(useAgencyStore.getState().reputation)) return false
     set((st) => ({
-      contracts: st.contracts.map((x) => (x.id === id ? { ...x, status: 'active' as const } : x)),
+      contracts: st.contracts.map((x) =>
+        x.id === id
+          ? { ...x, status: 'active' as const, progress: x.gameObjective ? freshProgress() : undefined }
+          : x,
+      ),
       targetId: id,
     }))
     save(get)
@@ -143,22 +158,68 @@ export const useContractStore = create<ContractState>((set, get) => ({
     const staleDropped = afterExpiry.length !== get().contracts.length
 
     let pendingCompletion: CompletionEvent | null = null
+    let progressChanged = false
+
+    // Throttle interval in sim-seconds (used for dwell/multi-pass dt).
+    // evaluate is called every ~1s real-time; TIME_SCALE converts to sim-seconds.
+    // We use a fixed representative dt here — consistent with the tick rate.
+    const DT_SEC = 30 // sim-seconds per evaluate tick (matches the game's 30x time-scale at 1s real tick)
 
     const contracts = afterExpiry.map((c) => {
       if (c.status !== 'active') return c
-      // Completion: any satellite's sub-point within the imaging radius right now.
-      const completingSat = satellites.find(
-        (sat) => groundDistanceKm(sat.elements, simTime, { lat: c.lat, lon: c.lon }) <= COMPLETION_RADIUS_KM,
-      )
-      if (completingSat) {
+
+      // Compute which satellites are within the imaging radius this tick.
+      const inRangeSatIds = satellites
+        .filter((sat) => groundDistanceKm(sat.elements, simTime, { lat: c.lat, lon: c.lon }) <= COMPLETION_RADIUS_KM)
+        .map((sat) => sat.id)
+
+      // --- Objective-aware completion logic ---
+      let contractReadyToComplete = false
+      let updatedProgress: ObjectiveProgress | undefined = c.progress
+
+      if (c.gameObjective) {
+        // Advance objective progress this tick.
+        const prevProgress = c.progress ?? freshProgress()
+        updatedProgress = evaluateObjective(c.gameObjective, prevProgress, {
+          inRangeSatIds,
+          dtSec: DT_SEC,
+        })
+        contractReadyToComplete = updatedProgress.done
+      } else {
+        // Back-compat: no gameObjective → original single-pass behaviour.
+        contractReadyToComplete = inRangeSatIds.length > 0
+      }
+
+      // If progress changed but objective not yet done, save the updated progress.
+      if (c.gameObjective && !contractReadyToComplete) {
+        progressChanged = true
+        return { ...c, progress: updatedProgress }
+      }
+
+      if (contractReadyToComplete) {
+        // Use the first in-range sat (or any matching sat) to attribute the completion.
+        const completingSat =
+          satellites.find(
+            (sat) => inRangeSatIds.includes(sat.id) && sat.capability === c.preferredCapability,
+          ) ?? satellites.find((sat) => inRangeSatIds.includes(sat.id))
+
+        // If progress.done fired but no sat currently in range (e.g. multi-sat finished
+        // a prior tick), fall back gracefully.
+        if (!completingSat) {
+          return c.gameObjective ? { ...c, progress: updatedProgress } : c
+        }
+
         const matched = completingSat.capability === c.preferredCapability
+        // Base funding: capability bonus layer.
         let funding = matchBonusFunding(c.reward.funding, matched)
-        // Operational-tempo streak multiplier — bump streak first so the new value
-        // is reflected in the event. Single addFunding call below (source of truth).
+        // Streak multiplier.
         useGameStore.getState().bumpStreak()
         const streak = useGameStore.getState().streak
         const multiplier = 1 + Math.min(0.5, 0.1 * (streak - 1))
-        funding = Math.round(funding * multiplier)
+        // Objective scale layer.
+        const objScale = c.gameObjective ? objectiveRewardScale(c.gameObjective) : 1.0
+        // Single award site: base × capabilityBonus × streakMult × objectiveScale.
+        funding = Math.round(funding * multiplier * objScale)
         agency.addFunding(funding)
         agency.addReputation(c.reward.reputation)
         useAgencyStore.getState().advanceArchetype(c.archetype)
@@ -191,10 +252,11 @@ export const useContractStore = create<ContractState>((set, get) => ({
           trickShot,
           ...(c.archetype === 'relief' ? { reliefImpact: reliefImpactLine(c.kind, c.title) } : {}),
         }
-        const done = { ...c, status: 'completed' as const, completedBy: completingSat.id, matched }
+        const done = { ...c, status: 'completed' as const, completedBy: completingSat.id, matched, progress: updatedProgress }
         completed.push(done)
         return done
       }
+
       if (simTime > c.deadline) {
         agency.addReputation(-5)
         useGameStore.getState().resetStreak()
@@ -202,7 +264,7 @@ export const useContractStore = create<ContractState>((set, get) => ({
         failed.push(bad)
         return bad
       }
-      return c
+      return c.gameObjective ? { ...c, progress: updatedProgress } : c
     })
 
     // Cap completed+failed history to most recent 10.
@@ -215,7 +277,7 @@ export const useContractStore = create<ContractState>((set, get) => ({
       useGameStore.getState().clearLastManeuver()
     }
 
-    if (completed.length || failed.length || staleDropped) {
+    if (completed.length || failed.length || staleDropped || progressChanged) {
       set({ contracts: bounded, ...(pendingCompletion ? { lastCompletion: pendingCompletion } : {}) })
       save(get)
     }

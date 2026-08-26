@@ -5,6 +5,7 @@ import { useGameStore } from './gameStore'
 import { subPoint } from '@/lib/intercept'
 import { matchBonusFunding } from '@/lib/contractMeta'
 import { saveJSON } from '@/lib/persist'
+import { type Objective, objectiveRewardScale } from '@/lib/contractObjective'
 
 // Use a far-future deadline (sim-seconds) so tests do not inadvertently hit the
 // stale-contract expiry guard. Individual tests that want to test expiry pass
@@ -281,5 +282,78 @@ describe('contractStore', () => {
     useContractStore.getState().addContract(c)
     useContractStore.getState().addContract(c)
     expect(useContractStore.getState().contracts).toHaveLength(1)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Objective-aware contract tests
+  // ---------------------------------------------------------------------------
+
+  it('objective contract does NOT complete on first in-range eval (multi-pass, needs 3)', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    const gameObjective: Objective = { type: 'multi-pass', label: 'Monitor — 3 passes', params: { passes: 3 } }
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon, gameObjective })])
+    useContractStore.getState().accept('c1')
+    // Initialise progress
+    const { completed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    // 1 pass done — not yet 3
+    expect(completed).toHaveLength(0)
+    const c = useContractStore.getState().contracts.find((x) => x.id === 'c1')!
+    expect(c.status).toBe('active')
+    expect(c.progress?.passesDone).toBe(1)
+  })
+
+  it('objective contract completes after enough passes (single-pass objective)', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    const gameObjective: Objective = { type: 'single-pass', label: 'Capture', params: {} }
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon, gameObjective })])
+    useContractStore.getState().accept('c1')
+    const { completed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(completed).toHaveLength(1)
+    expect(useContractStore.getState().contracts.find((x) => x.id === 'c1')!.status).toBe('completed')
+  })
+
+  it('objective reward is scaled by objectiveRewardScale (single funding award)', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // multi-sat objective: completed in one tick with one sat → sats threshold = 1
+    const gameObjective: Objective = { type: 'multi-sat', label: 'Track launch — 1 sat', params: { sats: 1 } }
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon, gameObjective, preferredCapability: 'imaging' })])
+    useContractStore.getState().accept('c1')
+    const before = useAgencyStore.getState().funding
+    const { completed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(completed).toHaveLength(1)
+    // sat[0] is imaging → matched → matchBonusFunding applied; streak=1 → mult=1; objScale from multi-sat/1 sat
+    const expectedBase = matchBonusFunding(200, true)
+    const streak = 1
+    const mult = 1 + Math.min(0.5, 0.1 * (streak - 1)) // = 1.0
+    const objScale = objectiveRewardScale(gameObjective)
+    const expected = Math.round(expectedBase * mult * objScale)
+    expect(useAgencyStore.getState().funding - before).toBe(expected)
+  })
+
+  it('no-objective contract (back-compat) still completes on first in-range eval', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // No gameObjective field
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon })])
+    useContractStore.getState().accept('c1')
+    const { completed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(completed).toHaveLength(1)
+  })
+
+  it('dwell objective accumulates progress across ticks', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // Use dwell: 90s — won't complete on the first tick (30s dt)
+    const gameObjective: Objective = { type: 'dwell', label: 'Comms dwell 90s', params: { dwellSec: 90 } }
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon, gameObjective })])
+    useContractStore.getState().accept('c1')
+    // Tick 1 — 30s accumulated, not done
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    let c = useContractStore.getState().contracts.find((x) => x.id === 'c1')!
+    expect(c.status).toBe('active')
+    expect(c.progress?.dwellAccumSec).toBeGreaterThan(0)
   })
 })
