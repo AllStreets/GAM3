@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import {
   applyDeltaV, MS_TO_ER, orbitalPeriod, type OrbitalElements,
 } from '@/lib/orbits'
+import { planeForTarget } from '@/lib/aimPlane'
 import { recordBurn, recordAbort } from '@/lib/profile'
 import { refuelPrice, SATELLITE_PRICE, refuelPricePerDv, affordableRefuelDv } from '@/lib/economy'
 import { tankUpgradeCost, tankUpgradeDv, RETROFIT_COST } from '@/lib/upgrades'
@@ -115,6 +116,14 @@ interface GameState {
   abortBurn(): void
   refuelSatellite(id: string, dv?: number): boolean
   buySatellite(): boolean
+  /**
+   * Buy a satellite aimed at a geographic target.
+   * When `target` is provided, uses `planeForTarget` to set an orbital plane
+   * whose ground-track passes over the target latitude/longitude.
+   * When no target is given, falls back to the existing auto-placement logic.
+   * Spends `SATELLITE_PRICE` from agency funding. Returns true if purchased.
+   */
+  buySatelliteAimed(target?: { lat: number; lon: number }): boolean
   /**
    * Expand a satellite's fuel tank by one level.
    * Costs `tankUpgradeCost(sat.tankLevel)` funding.
@@ -299,6 +308,33 @@ export const useGameStore = create<GameState>((set, get) => ({
       elements: {
         a: (6371 + 500 + n * 40) / 6371, e: 0.001, i: deg(63 + n * 5),
         raan: (0.6 * n) % (Math.PI * 2), argp: (0.4 * n) % (Math.PI * 2), m0: (1.1 * n) % (Math.PI * 2), epoch: 0,
+      },
+      fuel: 1500, fuelCapacity: 1500,
+      capability: fillGapCapability(get().satellites.map((s) => s.capability)),
+      record: freshRecord(get().previewAt ?? 0),
+      tankLevel: 0,
+    }
+    set((s) => ({ satellites: [...s.satellites, sat] }))
+    saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
+    return true
+  },
+
+  buySatelliteAimed: (target) => {
+    if (!target) return get().buySatellite()
+    if (!useAgencyStore.getState().spendFunding(SATELLITE_PRICE)) return false
+    const n = get().satellites.length + 1
+    const aimElements = planeForTarget(target.lat, target.lon, n)
+    const sat: Satellite = {
+      id: `hyp-${n}-${Math.round(get().previewAt ?? 0)}`,
+      name: `HYPERION-${n}`,
+      elements: {
+        a: aimElements.a ?? (6371 + 500) / 6371,
+        e: aimElements.e ?? 0.001,
+        i: aimElements.i ?? deg(51.6),
+        raan: aimElements.raan ?? 0,
+        argp: aimElements.argp ?? 0,
+        m0: aimElements.m0 ?? 0,
+        epoch: aimElements.epoch ?? 0,
       },
       fuel: 1500, fuelCapacity: 1500,
       capability: fillGapCapability(get().satellites.map((s) => s.capability)),

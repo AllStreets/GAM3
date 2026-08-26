@@ -485,3 +485,73 @@ describe('gameStore.emergencyRefit', () => {
     expect(dispatches[0].text).toContain(sat.name)
   })
 })
+
+// ─── buySatelliteAimed ───────────────────────────────────────────────────────
+
+import { isTargetReachable } from '@/lib/reachability'
+
+describe('gameStore.buySatelliteAimed', () => {
+  beforeEach(() => {
+    useGameStore.getState().resetForTest()
+    useAgencyStore.getState().resetForTest()
+  })
+
+  it('with no target behaves like buySatellite (auto mode)', () => {
+    useAgencyStore.setState({ funding: SATELLITE_PRICE + 100 })
+    const n = useGameStore.getState().satellites.length
+    expect(useGameStore.getState().buySatelliteAimed()).toBe(true)
+    expect(useGameStore.getState().satellites.length).toBe(n + 1)
+    expect(useAgencyStore.getState().funding).toBe(100)
+  })
+
+  it('returns false when insufficient funding', () => {
+    useAgencyStore.setState({ funding: 0 })
+    const n = useGameStore.getState().satellites.length
+    expect(useGameStore.getState().buySatelliteAimed({ lat: 35, lon: 139 })).toBe(false)
+    expect(useGameStore.getState().satellites.length).toBe(n)
+  })
+
+  it('aimed at a mid-latitude target yields a satellite whose orbit covers that latitude', () => {
+    useAgencyStore.setState({ funding: SATELLITE_PRICE + 100 })
+    const target = { lat: 35, lon: 139 }
+    const ok = useGameStore.getState().buySatelliteAimed(target)
+    expect(ok).toBe(true)
+    const sats = useGameStore.getState().satellites
+    const newSat = sats[sats.length - 1]
+    expect(isTargetReachable(newSat.elements, target.lat)).toBe(true)
+  })
+
+  it('aimed at a polar target (80°N) yields a satellite that covers 80°N', () => {
+    useAgencyStore.setState({ funding: SATELLITE_PRICE + 100 })
+    const target = { lat: 80, lon: 20 }
+    const ok = useGameStore.getState().buySatelliteAimed(target)
+    expect(ok).toBe(true)
+    const sats = useGameStore.getState().satellites
+    const newSat = sats[sats.length - 1]
+    expect(isTargetReachable(newSat.elements, 80)).toBe(true)
+  })
+
+  it('aimed at a southern hemisphere target (-45°S) yields coverage', () => {
+    useAgencyStore.setState({ funding: SATELLITE_PRICE + 100 })
+    const target = { lat: -45, lon: 170 }
+    const ok = useGameStore.getState().buySatelliteAimed(target)
+    expect(ok).toBe(true)
+    const sats = useGameStore.getState().satellites
+    const newSat = sats[sats.length - 1]
+    expect(isTargetReachable(newSat.elements, -45)).toBe(true)
+  })
+
+  it('deducts SATELLITE_PRICE from agency funding', () => {
+    useAgencyStore.setState({ funding: SATELLITE_PRICE + 50 })
+    useGameStore.getState().buySatelliteAimed({ lat: 35, lon: 139 })
+    expect(useAgencyStore.getState().funding).toBe(50)
+  })
+
+  it('buySatellite (original) still works unchanged after adding buySatelliteAimed', () => {
+    useAgencyStore.setState({ funding: SATELLITE_PRICE + 10 })
+    const n = useGameStore.getState().satellites.length
+    expect(useGameStore.getState().buySatellite()).toBe(true)
+    expect(useGameStore.getState().satellites.length).toBe(n + 1)
+    expect(useAgencyStore.getState().funding).toBe(10)
+  })
+})

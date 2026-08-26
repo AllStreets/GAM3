@@ -5,7 +5,7 @@ import { useGameStore, burnCost, type Satellite } from '@/state/gameStore'
 import { propagate, ER_KM, orbitalPeriod } from '@/lib/orbits'
 import { simNow } from '@/lib/simTime'
 import { audio } from '@/audio/AudioEngine'
-import { SATELLITE_PRICE, refuelPrice, refuelPricePerDv, affordableRefuelDv } from '@/lib/economy'
+import { refuelPrice, refuelPricePerDv, affordableRefuelDv } from '@/lib/economy'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
 import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
@@ -13,6 +13,7 @@ import { CAPABILITY_LABEL, CAPABILITY_COLOR } from '@/lib/satelliteMeta'
 import { Chip } from '@/components/ui/Chip'
 import SatelliteRecordCard from '@/components/SatelliteRecordCard'
 import UpgradesPanel from '@/components/UpgradesPanel'
+import BuyPlanePicker from '@/components/BuyPlanePicker'
 
 function telemetry(sat: Satellite) {
   const { position, velocity } = propagate(sat.elements, simNow())
@@ -46,7 +47,6 @@ export default function FleetPanel() {
   const beginBurn = useGameStore((s) => s.beginBurn)
   const refuelSatellite = useGameStore((s) => s.refuelSatellite)
   const emergencyRefit = useGameStore((s) => s.emergencyRefit)
-  const buySatellite = useGameStore((s) => s.buySatellite)
   const funding = useAgencyStore((s) => s.funding)
   const refitTokens = useAgencyStore((s) => s.milestones.refitTokens)
   const refuelEfficiencyLevel = useAgencyStore((s) => s.refuelEfficiencyLevel)
@@ -253,13 +253,7 @@ export default function FleetPanel() {
               </button>
             )
           })()}
-          <button
-            onClick={() => { if (buySatellite()) audio.chirp() }}
-            disabled={funding < SATELLITE_PRICE}
-            className="self-end rounded border border-[var(--accent)]/40 px-2 py-1 text-[11px] text-[var(--accent)] transition enabled:hover:bg-[var(--accent)]/10 disabled:opacity-30"
-          >
-            BUY SATELLITE §{SATELLITE_PRICE}
-          </button>
+          <BuyPlanePicker />
         </div>
       </aside>
     </>
