@@ -5,7 +5,7 @@ import { useGameStore, burnCost, type Satellite } from '@/state/gameStore'
 import { propagate, ER_KM, orbitalPeriod } from '@/lib/orbits'
 import { simNow } from '@/lib/simTime'
 import { audio } from '@/audio/AudioEngine'
-import { refuelPrice, refuelPricePerDv, affordableRefuelDv } from '@/lib/economy'
+import { refuelPricePerDv, affordableRefuelDv } from '@/lib/economy'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
 import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
@@ -194,7 +194,8 @@ export default function FleetPanel() {
             const pricePerDv = refuelPricePerDv(refuelEfficiencyLevel)
             const affordDv = affordableRefuelDv(missing, funding, pricePerDv)
             const affordCost = Math.ceil(affordDv * pricePerDv)
-            const fullCost = refuelPrice(missing)
+            // Charge the same efficiency-discounted rate the store uses, so the label matches the cost.
+            const fullCost = Math.ceil(missing * pricePerDv)
             const canAffordFull = funding >= fullCost && missing > 0
             const canAffordAny = affordDv > 0
             const isFull = missing <= 0
