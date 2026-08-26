@@ -19,6 +19,22 @@ describe('contractMeta', () => {
     expect(matchBonusFunding(400, false)).toBe(400)
     expect(matchBonusFunding(400, true)).toBe(Math.round(400 * (1 + CAPABILITY_MATCH_BONUS)))
   })
+
+  // New kinds: volcano, flood, spaceweather
+  it('volcano → research archetype, thermal capability', () => {
+    expect(archetypeForKind('volcano')).toBe('research')
+    expect(capabilityForKind('volcano')).toBe('thermal')
+  })
+
+  it('flood → relief archetype, imaging capability', () => {
+    expect(archetypeForKind('flood')).toBe('relief')
+    expect(capabilityForKind('flood')).toBe('imaging')
+  })
+
+  it('spaceweather → research archetype, thermal capability', () => {
+    expect(archetypeForKind('spaceweather')).toBe('research')
+    expect(capabilityForKind('spaceweather')).toBe('thermal')
+  })
 })
 
 describe('orderEventsForArchetype', () => {

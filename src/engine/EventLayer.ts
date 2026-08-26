@@ -4,7 +4,15 @@ import { useWorldStore } from '@/state/worldStore'
 import type { WorldEvent } from '@/lib/worldEvents'
 import { getEventIconTexture, hashPhase } from '@/engine/eventIcons'
 
-const COLORS = { quake: 0xff5c49, wildfire: 0xffa14a, storm: 0x9a7bff, launch: 0x45d8ff } as const
+const COLORS = {
+  quake: 0xff5c49,
+  wildfire: 0xffa14a,
+  storm: 0x9a7bff,
+  launch: 0x45d8ff,
+  volcano: 0xff8c42,
+  flood: 0x4ab8ff,
+  spaceweather: 0xffe566,
+} as const
 
 interface MarkerEntry {
   root: THREE.Group

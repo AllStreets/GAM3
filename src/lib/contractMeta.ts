@@ -14,7 +14,7 @@ export function archetypeForKind(kind: string): Archetype {
 
 export function capabilityForKind(kind: string): Capability {
   const k = kind.toLowerCase()
-  if (has(k, 'fire', 'wildfire', 'volcano', 'thermal', 'heat')) return 'thermal'
+  if (has(k, 'fire', 'wildfire', 'volcano', 'thermal', 'heat', 'spaceweather', 'solar', 'geomagnetic')) return 'thermal'
   if (has(k, 'launch', 'rocket', 'relay', 'comms')) return 'comms'
   return 'imaging'
 }

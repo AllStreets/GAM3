@@ -10,6 +10,9 @@ const GLYPH: Record<EventKind, { char: string; cls: string }> = {
   wildfire: { char: '▲', cls: 'text-[#ffa14a]' },
   storm: { char: '◎', cls: 'text-[#9a7bff]' },
   launch: { char: '▶', cls: 'text-[#45d8ff]' },
+  volcano: { char: '⬡', cls: 'text-[#ff8c42]' },
+  flood: { char: '〜', cls: 'text-[#4ab8ff]' },
+  spaceweather: { char: '✦', cls: 'text-[#ffe566]' },
 }
 
 function timeAgo(iso: string, now: number): string {
