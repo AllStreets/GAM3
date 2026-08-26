@@ -1,3 +1,5 @@
+import { refuelEfficiencyFactor } from '@/lib/upgrades'
+
 export const STARTING_FUNDING = 500
 export const STARTING_REPUTATION = 0
 export const SATELLITE_PRICE = 800
@@ -28,4 +30,27 @@ export function contractReward(severity: number): { funding: number; reputation:
 /** Deadline five orbital periods after now — enough headroom to plan and fly an intercept without time pressure dominating. */
 export function contractDeadline(simNow: number, periodSec: number): number {
   return simNow + 5 * periodSec
+}
+
+/**
+ * Cost per m/s of delta-v when refuelling.
+ * At efficiency level 0 (default) this equals the base rate (0.6 §/m/s) so
+ * ceil(missing * refuelPricePerDv(0)) === refuelPrice(missing) exactly.
+ * Higher efficiency levels (via Plan T4 agency upgrade) reduce the rate via
+ * refuelEfficiencyFactor (10% per level, floored at 0.6).
+ */
+export function refuelPricePerDv(efficiencyLevel = 0): number {
+  // Base rate: 0.6 §/m/s  (matches existing refuelPrice at level 0)
+  const base = 0.6
+  return base * refuelEfficiencyFactor(efficiencyLevel)
+}
+
+/**
+ * How many m/s of delta-v the player can afford with `funds` at `pricePerDv`.
+ * Capped at `missingDv` (can't buy more than the tank needs).
+ * Returns a non-negative integer (floor).
+ */
+export function affordableRefuelDv(missingDv: number, funds: number, pricePerDv: number): number {
+  if (pricePerDv <= 0 || funds <= 0 || missingDv <= 0) return 0
+  return Math.floor(Math.min(missingDv, funds / pricePerDv))
 }

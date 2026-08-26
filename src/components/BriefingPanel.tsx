@@ -64,9 +64,10 @@ export default function BriefingPanel() {
         setBriefing(data.briefing)
         audio.chirp()
         const now = simNow()
-        const period = orbitalPeriod(useGameStore.getState().satellites[0].elements.a)
-        const fromAI = contractsFromBriefing(data.briefing.missions, events, now, period)
-        const contracts = fromAI.length ? fromAI : seedContracts(events, now, period)
+        const sats = useGameStore.getState().satellites
+        const period = orbitalPeriod(sats[0].elements.a)
+        const fromAI = contractsFromBriefing(data.briefing.missions, events, now, period, sats)
+        const contracts = fromAI.length ? fromAI : seedContracts(events, now, period, sats)
         useContractStore.getState().setAvailable(contracts)
       })
       .catch(() => {})

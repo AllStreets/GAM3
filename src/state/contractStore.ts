@@ -20,6 +20,9 @@ import {
   type ObjectiveProgress,
 } from '@/lib/contractObjective'
 import { rivalEtaSec, applyRaceResult } from '@/lib/rival'
+import { refuelPricePerDv, SATELLITE_PRICE } from '@/lib/economy'
+import { isAgencyStuck } from '@/lib/recovery'
+import { fleetReachability } from '@/lib/reachability'
 
 const KEY = 'hyperion-contracts-v1'
 
@@ -87,6 +90,11 @@ export interface Contract {
   completedBy?: string
   matched?: boolean
   /**
+   * Transient fleet-reachability annotation — computed when building/refreshing
+   * available contracts and on fleet change. Not persisted (recomputed each session).
+   */
+  reach?: import('@/lib/reachability').FleetReach
+  /**
    * If set, this contract is contested — the rival has an ETA and whoever
    * reaches the target first wins. rivalEtaSec is measured from acceptedAtSec
    * (sim-time when the player accepted). If rivalEtaSec is elapsed before the
@@ -119,6 +127,14 @@ interface ContractState extends Persisted {
   setTarget(id: string | null): void
   evaluate(satellites: Satellite[], simTime: number): { completed: Contract[]; failed: Contract[] }
   clearCompletion(): void
+  /**
+   * Voluntarily abandon an ACTIVE contract (stand down).
+   * Sets the contract to 'failed', frees the committed satellite (clears targetId if it
+   * pointed at this contract), emits a dispatch, and applies a reputation ding
+   * (waived if the agency is stuck: funds === 0 and all sats have little fuel).
+   * Returns false if the contract is not found or not active.
+   */
+  standDown(id: string): boolean
   hydrate(): void
   resetForTest(): void
 }
@@ -335,6 +351,31 @@ export const useContractStore = create<ContractState>((set, get) => ({
           })
         }
 
+        // ── Milestone accrual (SEPARATE from the single contract award above) ──
+        // Called on every completion; only grants funding/token on 5th, 10th, … tier.
+        {
+          const { grantedFunding, grantedTokens } = useAgencyStore.getState().recordCompletionMilestone()
+          if (grantedFunding > 0 || grantedTokens > 0) {
+            const storyStore = useStoryStore.getState()
+            if (grantedFunding > 0) {
+              storyStore.addDispatch({
+                id: `relief-grant-${c.id}-${Date.now()}`,
+                at: Date.now(),
+                text: `Relief grant secured: §${grantedFunding}`,
+                source: 'story',
+              })
+            }
+            if (grantedTokens > 0) {
+              storyStore.addDispatch({
+                id: `refit-token-${c.id}-${Date.now()}`,
+                at: Date.now(),
+                text: `Emergency-refit token earned.`,
+                source: 'story',
+              })
+            }
+          }
+        }
+
         // Last completion wins if multiple contracts complete in one eval tick.
         pendingCompletion = {
           contractId: c.id,
@@ -381,7 +422,91 @@ export const useContractStore = create<ContractState>((set, get) => ({
       set({ contracts: bounded, ...(pendingCompletion ? { lastCompletion: pendingCompletion } : {}) })
       save(get)
     }
+
+    // ── Stuck backstop (hard floor) ─────────────────────────────────────────
+    // If the agency is completely stuck AND out of funds AND has no refit
+    // tokens AND the backstop hasn't already fired this episode, grant a
+    // minimal emergency relief drop so the game can always continue.
+    const agencyNow = useAgencyStore.getState()
+    if (
+      agencyNow.funding === 0 &&
+      agencyNow.milestones.refitTokens === 0 &&
+      !agencyNow.reliefEmergencyUsed
+    ) {
+      const fleet = useGameStore.getState().satellites
+      const activeContracts = bounded.filter((c) => c.status === 'active')
+      if (activeContracts.length > 0) {
+        // Compute bestApproxDvMs per active contract (from fleetReachability).
+        const activeTargetsBestDv = activeContracts.map((c) => {
+          const reach = fleetReachability(fleet, { lat: c.lat, lon: c.lon })
+          return reach.reachable ? reach.bestApproxDvMs : null
+        })
+        const pricePerDv = refuelPricePerDv(agencyNow.refuelEfficiencyLevel ?? 0)
+        const stuck = isAgencyStuck({
+          fleet,
+          funds: agencyNow.funding,
+          activeTargetsBestDv,
+          satellitePrice: SATELLITE_PRICE,
+          pricePerDv,
+        })
+        if (stuck) {
+          const EMERGENCY_AMOUNT = 150
+          agencyNow.grantEmergencyRelief(EMERGENCY_AMOUNT)
+          useStoryStore.getState().addDispatch({
+            id: `emergency-relief-drop-${Date.now()}`,
+            at: Date.now(),
+            text: `Emergency relief drop authorised — §${EMERGENCY_AMOUNT} to keep operations alive.`,
+            source: 'story',
+          })
+        }
+      }
+    }
+
     return { completed, failed }
+  },
+
+  standDown: (id) => {
+    const s = get()
+    const c = s.contracts.find((x) => x.id === id)
+    if (!c || c.status !== 'active') return false
+
+    // Mark contract as failed (soft — keeps history consistent).
+    const updated = s.contracts.map((x) =>
+      x.id === id ? { ...x, status: 'failed' as const } : x,
+    )
+    // Free the committed satellite by clearing targetId if it pointed here.
+    const nextTargetId = s.targetId === id ? null : s.targetId
+
+    // Determine if we should waive the reputation penalty.
+    // Approximation: agency is "stuck" if funds are 0 (can't refuel or buy a new sat)
+    // AND no satellite has meaningful fuel to fly anything useful.
+    // This intentionally doesn't require any active contracts to be present —
+    // it reflects the player's overall resource state at stand-down time.
+    const fleet = useGameStore.getState().satellites
+    const funds = useAgencyStore.getState().funding
+    const pricePerDv = refuelPricePerDv(useAgencyStore.getState().refuelEfficiencyLevel ?? 0)
+    const maxFuel = fleet.reduce((best, sat) => Math.max(best, sat.fuel), 0)
+    // "Near-empty" heuristic: max fuel is less than 50 m/s (can't reach anything useful).
+    const fleetDry = maxFuel < 50
+    // Can't buy a new satellite or afford any refuel at all.
+    const cantAffordAnything = funds < Math.ceil(1 * pricePerDv) && funds < SATELLITE_PRICE
+    const stuck = fleetDry && cantAffordAnything
+
+    if (!stuck) {
+      useAgencyStore.getState().addReputation(-2)
+    }
+
+    // Emit a stand-down dispatch.
+    useStoryStore.getState().addDispatch({
+      id: `standdown-${id}-${Date.now()}`,
+      at: Date.now(),
+      text: `Stood down from ${c.title}.`,
+      source: 'story',
+    })
+
+    set({ contracts: updated, targetId: nextTargetId })
+    save(get)
+    return true
   },
 
   clearCompletion: () => set({ lastCompletion: null }),

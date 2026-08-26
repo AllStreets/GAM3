@@ -5,13 +5,15 @@ import { useGameStore, burnCost, type Satellite } from '@/state/gameStore'
 import { propagate, ER_KM, orbitalPeriod } from '@/lib/orbits'
 import { simNow } from '@/lib/simTime'
 import { audio } from '@/audio/AudioEngine'
-import { SATELLITE_PRICE, refuelPrice } from '@/lib/economy'
+import { refuelPricePerDv, affordableRefuelDv } from '@/lib/economy'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
 import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
 import { CAPABILITY_LABEL, CAPABILITY_COLOR } from '@/lib/satelliteMeta'
 import { Chip } from '@/components/ui/Chip'
 import SatelliteRecordCard from '@/components/SatelliteRecordCard'
+import UpgradesPanel from '@/components/UpgradesPanel'
+import BuyPlanePicker from '@/components/BuyPlanePicker'
 
 function telemetry(sat: Satellite) {
   const { position, velocity } = propagate(sat.elements, simNow())
@@ -44,8 +46,10 @@ export default function FleetPanel() {
   const resetBurnPlan = useGameStore((s) => s.resetBurnPlan)
   const beginBurn = useGameStore((s) => s.beginBurn)
   const refuelSatellite = useGameStore((s) => s.refuelSatellite)
-  const buySatellite = useGameStore((s) => s.buySatellite)
+  const emergencyRefit = useGameStore((s) => s.emergencyRefit)
   const funding = useAgencyStore((s) => s.funding)
+  const refitTokens = useAgencyStore((s) => s.milestones.refitTokens)
+  const refuelEfficiencyLevel = useAgencyStore((s) => s.refuelEfficiencyLevel)
   const contracts = useContractStore((s) => s.contracts)
   const targetId = useContractStore((s) => s.targetId)
   const target =
@@ -146,6 +150,8 @@ export default function FleetPanel() {
                         <span>record</span>
                       </button>
                     )}
+                    {/* Upgrades panel — refit toggle below record on selected row */}
+                    {isSel && <UpgradesPanel />}
                   </li>
                 )
               })
@@ -182,23 +188,73 @@ export default function FleetPanel() {
           </section>
         )}
 
-        <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
-          {selected && (
-            <button
-              onClick={() => { if (refuelSatellite(selected.id)) audio.uiTick() }}
-              disabled={selected.fuel >= selected.fuelCapacity || funding < refuelPrice(selected.fuelCapacity - selected.fuel)}
-              className="rounded border border-white/15 px-2 py-1 text-[11px] transition enabled:hover:border-white/40 disabled:opacity-30"
-            >
-              REFUEL §{refuelPrice((selected?.fuelCapacity ?? 0) - (selected?.fuel ?? 0))}
-            </button>
-          )}
-          <button
-            onClick={() => { if (buySatellite()) audio.chirp() }}
-            disabled={funding < SATELLITE_PRICE}
-            className="ml-auto rounded border border-[var(--accent)]/40 px-2 py-1 text-[11px] text-[var(--accent)] transition enabled:hover:bg-[var(--accent)]/10 disabled:opacity-30"
-          >
-            BUY SATELLITE §{SATELLITE_PRICE}
-          </button>
+        <div className="mt-3 flex flex-col gap-2 border-t border-white/10 pt-3">
+          {selected && (() => {
+            const missing = selected.fuelCapacity - selected.fuel
+            const pricePerDv = refuelPricePerDv(refuelEfficiencyLevel)
+            const affordDv = affordableRefuelDv(missing, funding, pricePerDv)
+            const affordCost = Math.ceil(affordDv * pricePerDv)
+            // Charge the same efficiency-discounted rate the store uses, so the label matches the cost.
+            const fullCost = Math.ceil(missing * pricePerDv)
+            const canAffordFull = funding >= fullCost && missing > 0
+            const canAffordAny = affordDv > 0
+            const isFull = missing <= 0
+
+            if (isFull) {
+              return (
+                <button disabled className="rounded border border-white/15 px-2 py-1 text-[11px] disabled:opacity-30">
+                  REFUEL — full
+                </button>
+              )
+            }
+
+            if (!canAffordAny) {
+              const shortfall = Math.ceil(1 * pricePerDv) // cost of 1 Δv
+              return (
+                <button disabled className="rounded border border-white/15 px-2 py-1 text-[11px] disabled:opacity-30">
+                  REFUEL — §{shortfall} short
+                </button>
+              )
+            }
+
+            return (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { if (refuelSatellite(selected.id)) audio.uiTick() }}
+                  className="rounded border border-white/15 px-2 py-1 text-[11px] transition hover:border-white/40"
+                >
+                  REFUEL +{affordDv} Δv · §{affordCost}
+                </button>
+                {canAffordFull && affordDv < missing && (
+                  <button
+                    onClick={() => { if (refuelSatellite(selected.id, missing)) audio.uiTick() }}
+                    className="rounded border border-white/15 px-2 py-1 text-[11px] opacity-70 transition hover:border-white/40 hover:opacity-100"
+                  >
+                    FULL · §{fullCost}
+                  </button>
+                )}
+              </div>
+            )
+          })()}
+          {selected && (() => {
+            const isFull = selected.fuelCapacity - selected.fuel <= 0
+            const hasTokens = refitTokens > 0
+            const disabled = isFull || !hasTokens
+            const reason = isFull ? 'tank full' : !hasTokens ? 'no tokens' : ''
+            return (
+              <button
+                onClick={() => { if (!disabled && emergencyRefit(selected.id)) audio.alert() }}
+                disabled={disabled}
+                title={disabled ? `EMERGENCY REFIT — ${reason}` : `Spend 1 refit token to fully refuel ${selected.name} for free`}
+                className="rounded border border-[#f97316]/40 px-2 py-1 text-[11px] text-[#f97316] transition enabled:hover:bg-[#f97316]/10 disabled:opacity-30"
+              >
+                {disabled && reason
+                  ? `EMERGENCY REFIT — ${reason}`
+                  : `EMERGENCY REFIT (${refitTokens})`}
+              </button>
+            )
+          })()}
+          <BuyPlanePicker />
         </div>
       </aside>
     </>
