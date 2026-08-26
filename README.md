@@ -6,7 +6,7 @@ A browser game about running a private orbital agency over a living Earth —
 real orbital mechanics, real live world events, and an AI-woven world that
 grows differently for every player.
 
-**Status:** Plan 8 (Living Places) shipped — click any point on Earth for a Place Card with a real city photo, cinematically zoom from orbit into the city, summon AI contracts grounded in that location, and capture named-by-place postcards. (Builds on Plan 7B: named/specialized satellites with real loss, per-user agency archetypes that flavor the AI, scored maneuvers & trick-shots, a cinematic completion set-piece, emergencies, cold-open, walkthrough, postcards.)
+**Status:** Plan 9 (Story Engine) shipped — the world has memory and drama: completing a contract over a place blooms its real city photo into the cinematic; more real feeds (GDACS disasters, NOAA space-weather, more EONET categories); contracts vary in *how* you play them (multi-pass / multi-satellite / dwell); an AI story engine grows dispatches and arcs from your record; and a rival agency with memory races you for contracts. (Builds on Plan 8 living places, Plan 7B soul & spectacle.)
 
 ## Stack
 
