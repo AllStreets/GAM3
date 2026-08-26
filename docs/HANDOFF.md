@@ -6,7 +6,7 @@
 
 HYPERION is Connor's game: command a satellite fleet over a **cinematic, living, REAL Earth**. Real orbital mechanics you fly by hand. Real world events (earthquakes, storms, wildfires, launches) from live feeds are the content. An LLM turns those events + your personal playstyle into briefings, missions, and eventually storylines/rivals — so **the game is different for every player and grows with them**. Pillars in priority order: gorgeous graphics, cool physics, excitement, per-user AI divergence. Story is ambient flavor, never a gate.
 
-## Where We Are (Plans 1–11 shipped, live at https://hyperion-flax.vercel.app)
+## Where We Are (Plans 1–12 shipped, live at https://hyperion-flax.vercel.app)
 
 | Plan | Delivered |
 |---|---|
@@ -24,7 +24,7 @@ HYPERION is Connor's game: command a satellite fleet over a **cinematic, living,
 | 7A.5 — Legibility & pacing | The core loop now teaches itself (from a controller playtest that found 7A worked but was confusing). `GuidanceHint` coach line (accept → ① select sat → ② drag NORMAL to green → ③ IGNITE); FleetPanel shows each satellite's closest-approach to the target + "◀ best" badge; InterceptReadout gives a **directional hint** ("nudge NORMAL ◀/▶", from `normalHint`) + **near-term pass ETA** (`firstPassEta`); events list collapsed by default; deadlines 3→5 periods; burn sliders widened ±400→±800 so far contracts are one-burn winnable. Verified end-to-end: a fresh player is guided to complete a contract. |
 | 7A — Game foundations | **It's a game now.** Found an agency (name + procedural SVG emblem + colorway, `FoundingScreen`); 5-satellite fleet w/ diverse planes; contracts from AI briefing (`contractStore`, accept→active→complete/expire); **maneuver-to-intercept** — fly a burn to bring a satellite's ground-track over a real-event target (`src/lib/intercept.ts` closest-approach solver; `ContractLayer` target ring + ground-track + marker; `InterceptReadout` ghost-aware closest-approach HUD); lean economy (`agencyStore` funding+reputation, refuel, buy-satellite); CONTRACTS + AGENCY panels (right-rail flex stack); field GUIDE (`?`); effect-based store hydration (reload-safe); all client-side localStorage. Spec: `docs/superpowers/specs/2026-08-23-hyperion-game-layer-design.md` |
 
-**Gates:** 462 unit tests, 25 e2e (Playwright, includes console-error + non-black-canvas + founding/walkthrough/guide + place-card/city-reveal + story-engine + resilience), tsc clean, production build OK. **Infra:** GitHub `AllStreets/GAM3` → Vercel project `hyperion` auto-deploys main; `ANTHROPIC_API_KEY` in Vercel prod+preview env (Sensitive) and `.env.local` (gitignored; verified never committed). **Port 3100 — never 3000 (AgentZeus owns 3000).**
+**Gates:** 511 unit tests, 25 e2e (Playwright, includes console-error + non-black-canvas + founding/walkthrough/guide + place-card/city-reveal + story-engine + resilience), tsc clean, production build OK. **Infra:** GitHub `AllStreets/GAM3` → Vercel project `hyperion` auto-deploys main; `ANTHROPIC_API_KEY` in Vercel prod+preview env (Sensitive) and `.env.local` (gitignored; verified never committed). **Port 3100 — never 3000 (AgentZeus owns 3000).**
 
 ## Connor's Direct Feedback (2026-08-23 — the priorities)
 

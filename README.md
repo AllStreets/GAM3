@@ -6,7 +6,7 @@ A browser game about running a private orbital agency over a living Earth —
 real orbital mechanics, real live world events, and an AI-woven world that
 grows differently for every player.
 
-**Status:** Plan 11 (Persistence) shipped — your game now saves to the cloud (Neon Postgres): durable across devices and localStorage wipes, with **optional Clerk sign-in** (play anonymously with no login, or sign in to sync across devices). A **Settings** panel (⚙) adds audio mute, account controls, and a reliable game reset. (Builds on Plan 10 resilience & progression, Plan 9 story engine, Plan 8 living places, Plan 7B soul & spectacle.)
+**Status:** Plan 12 (Living World) shipped — the world evolves **while you're offline**: a scheduled server tick advances every away player's world in Neon (contracts expire, the rival claims races you didn't finish, fresh contracts appear, story arcs escalate), and you return to a "while you were away" digest of what changed. (Builds on Plan 11 cloud persistence + accounts, Plan 10 resilience & progression, Plan 9 story engine, Plan 8 living places, Plan 7B soul & spectacle.)
 
 ## Stack
 
