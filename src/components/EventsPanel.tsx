@@ -45,7 +45,7 @@ export default function EventsPanel() {
   }, [])
 
   return (
-    <aside className="pointer-events-auto fixed left-6 top-16 z-20 w-80 font-mono text-xs text-[var(--text)]">
+    <aside className="pointer-events-auto w-80 font-mono text-xs text-[var(--text)]">
       <section className="rounded border border-white/10 bg-black/55 p-3 backdrop-blur">
         <h2 className="mb-2 flex items-center justify-between text-[10px] tracking-[0.35em] text-[var(--accent)]">
           <span>EVENTS</span>

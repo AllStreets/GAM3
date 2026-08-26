@@ -10,6 +10,7 @@ import { audio } from '@/audio/AudioEngine'
 import { useContractStore } from '@/state/contractStore'
 import { contractsFromBriefing, seedContracts, type BriefingMission } from '@/lib/contractsFromBriefing'
 import { useAgencyStore, agencyArchetype } from '@/state/agencyStore'
+import { triggerStory } from '@/lib/storyTrigger'
 
 interface Briefing {
   headline: string
@@ -40,6 +41,9 @@ export default function BriefingPanel() {
     })
 
     const agencyState = useAgencyStore.getState()
+    // Fire story engine on session start alongside the briefing call
+    triggerStory(events)
+
     void fetch('/api/briefing', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
