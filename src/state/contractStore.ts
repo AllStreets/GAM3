@@ -72,6 +72,9 @@ interface Persisted {
 
 const DEFAULTS: Persisted = { contracts: [], targetId: null }
 
+/** Sim-time of the previous evaluate() call, for computing dwell/multi-pass dt. Reset in resetForTest. */
+let lastEvalSimTime = -1e9
+
 interface ContractState extends Persisted {
   /** Transient — set on completion, cleared by the overlay after display. Not persisted. */
   lastCompletion: CompletionEvent | null
@@ -160,10 +163,13 @@ export const useContractStore = create<ContractState>((set, get) => ({
     let pendingCompletion: CompletionEvent | null = null
     let progressChanged = false
 
-    // Throttle interval in sim-seconds (used for dwell/multi-pass dt).
-    // evaluate is called every ~1s real-time; TIME_SCALE converts to sim-seconds.
-    // We use a fixed representative dt here — consistent with the tick rate.
-    const DT_SEC = 30 // sim-seconds per evaluate tick (matches the game's 30x time-scale at 1s real tick)
+    // Sim-seconds elapsed since the previous evaluate — used for dwell/multi-pass dt.
+    // Computed from the actual sim-time delta so it stays correct regardless of the
+    // engine's throttle cadence (ContractLayer fires ~every 10 sim-sec) or TIME_SCALE.
+    // First call / gaps / non-advancing time fall back to a nominal 10 sim-sec.
+    const rawDt = simTime - lastEvalSimTime
+    const DT_SEC = lastEvalSimTime < 0 || rawDt <= 0 || rawDt > 120 ? 10 : rawDt
+    lastEvalSimTime = simTime
 
     const contracts = afterExpiry.map((c) => {
       if (c.status !== 'active') return c
@@ -301,6 +307,7 @@ export const useContractStore = create<ContractState>((set, get) => ({
 
   resetForTest: () => {
     clearKey(KEY)
+    lastEvalSimTime = -1e9
     set({ ...DEFAULTS, lastCompletion: null })
   },
 }))
