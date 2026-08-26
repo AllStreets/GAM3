@@ -202,6 +202,45 @@ describe('fleet economy', () => {
     useAgencyStore.setState({ funding: 0 })
     expect(useGameStore.getState().buySatellite()).toBe(false)
   })
+
+  it('refuelSatellite (no arg) does a partial refuel buying only what is affordable', () => {
+    const g = useGameStore.getState()
+    const id = g.satellites[0].id
+    // drain 300 m/s via burn
+    g.select(id); g.setBurnPlan({ prograde: 300 }); useGameStore.getState().executeBurn(0)
+    const before = useGameStore.getState().satellites[0]
+    // Give just enough funds to buy 100 m/s at 0.6 §/m/s → cost=60
+    useAgencyStore.setState({ funding: 60 })
+    expect(useGameStore.getState().refuelSatellite(id)).toBe(true)
+    const after = useGameStore.getState().satellites[0]
+    // floor(60 / 0.6) = 100 Δv added
+    expect(after.fuel).toBe(before.fuel + 100)
+    expect(useAgencyStore.getState().funding).toBe(0)
+  })
+
+  it('refuelSatellite with explicit dv arg buys only that amount', () => {
+    const g = useGameStore.getState()
+    const id = g.satellites[0].id
+    // drain 500 m/s
+    g.select(id); g.setBurnPlan({ prograde: 500 }); useGameStore.getState().executeBurn(0)
+    const before = useGameStore.getState().satellites[0]
+    useAgencyStore.setState({ funding: 1000 })
+    expect(useGameStore.getState().refuelSatellite(id, 200)).toBe(true)
+    const after = useGameStore.getState().satellites[0]
+    expect(after.fuel).toBe(before.fuel + 200)
+    // cost = ceil(200 * 0.6) = 120
+    expect(useAgencyStore.getState().funding).toBe(880)
+  })
+
+  it('refuelSatellite caps explicit dv at the missing amount (no overfill)', () => {
+    const g = useGameStore.getState()
+    const id = g.satellites[0].id
+    // drain 100 m/s (leaves 1700/1800)
+    g.select(id); g.setBurnPlan({ prograde: 100 }); useGameStore.getState().executeBurn(0)
+    useAgencyStore.setState({ funding: 9999 })
+    expect(useGameStore.getState().refuelSatellite(id, 9999)).toBe(true)
+    expect(useGameStore.getState().satellites[0].fuel).toBe(1800) // capped at fuelCapacity
+  })
 })
 
 describe('emergency conjunctions', () => {

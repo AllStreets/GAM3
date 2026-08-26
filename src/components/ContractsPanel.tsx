@@ -84,6 +84,7 @@ export default function ContractsPanel() {
   const targetId = useContractStore((s) => s.targetId)
   const accept = useContractStore((s) => s.accept)
   const setTarget = useContractStore((s) => s.setTarget)
+  const standDown = useContractStore((s) => s.standDown)
   const focusEvent = useWorldStore((s) => s.focusEvent)
   const selectedId = useGameStore((s) => s.selectedId)
   const satellites = useGameStore((s) => s.satellites)
@@ -151,46 +152,58 @@ export default function ContractsPanel() {
         )}
 
         {active.map((c) => (
-          <button
+          <div
             key={c.id}
-            onClick={() => { audio.uiTick(); setTarget(c.id); focusEvent(c.eventId) }}
-            className={`mb-1 block w-full rounded border p-2 text-left transition ${
+            className={`mb-1 rounded border p-2 transition ${
               c.contested
                 ? targetId === c.id
                   ? 'border-[#ffa14a] bg-[#ffa14a]/10'
-                  : 'border-[#ffa14a]/40 hover:border-[#ffa14a]/60'
+                  : 'border-[#ffa14a]/40'
                 : targetId === c.id
                   ? 'border-[#ffb86b] bg-[#ffb86b]/10'
-                  : 'border-white/15 hover:border-white/30'
+                  : 'border-white/15'
             }`}
           >
-            <p className="mb-0.5 flex items-center justify-between">
-              <span className={`truncate font-semibold ${c.contested ? 'text-[#ffa14a]' : 'text-[#ffb86b]'}`}>{c.title}</span>
-              <span className="shrink-0 tabular-nums opacity-70">{now === null ? '' : `T-${countdown(c.deadline, now)}`}</span>
-            </p>
-            {c.gameObjective ? (
-              <p className="mb-0.5 flex items-center gap-1.5 flex-wrap">
-                <Chip color="#a78bfa">{c.gameObjective.label}</Chip>
-                {c.progress && (
-                  <Chip className="opacity-80">{progressLabel(c.gameObjective, c.progress)}</Chip>
-                )}
-                {c.contested && now !== null && (
-                  <Chip color={RIVAL_COLOR}>
-                    ⚔ RIVAL {rivalCountdown(c.contested.acceptedAtSec, c.contested.rivalEtaSec, now)}
-                  </Chip>
-                )}
+            <button
+              onClick={() => { audio.uiTick(); setTarget(c.id); focusEvent(c.eventId) }}
+              className="block w-full text-left"
+            >
+              <p className="mb-0.5 flex items-center justify-between">
+                <span className={`truncate font-semibold ${c.contested ? 'text-[#ffa14a]' : 'text-[#ffb86b]'}`}>{c.title}</span>
+                <span className="shrink-0 tabular-nums opacity-70">{now === null ? '' : `T-${countdown(c.deadline, now)}`}</span>
               </p>
-            ) : (
-              <p className="opacity-60 flex items-center gap-1.5 flex-wrap">
-                <span>Maneuver a satellite over the target · TRACK to view</span>
-                {c.contested && now !== null && (
-                  <Chip color={RIVAL_COLOR}>
-                    ⚔ RIVAL {rivalCountdown(c.contested.acceptedAtSec, c.contested.rivalEtaSec, now)}
-                  </Chip>
-                )}
-              </p>
-            )}
-          </button>
+              {c.gameObjective ? (
+                <p className="mb-0.5 flex items-center gap-1.5 flex-wrap">
+                  <Chip color="#a78bfa">{c.gameObjective.label}</Chip>
+                  {c.progress && (
+                    <Chip className="opacity-80">{progressLabel(c.gameObjective, c.progress)}</Chip>
+                  )}
+                  {c.contested && now !== null && (
+                    <Chip color={RIVAL_COLOR}>
+                      ⚔ RIVAL {rivalCountdown(c.contested.acceptedAtSec, c.contested.rivalEtaSec, now)}
+                    </Chip>
+                  )}
+                </p>
+              ) : (
+                <p className="opacity-60 flex items-center gap-1.5 flex-wrap">
+                  <span>Maneuver a satellite over the target · TRACK to view</span>
+                  {c.contested && now !== null && (
+                    <Chip color={RIVAL_COLOR}>
+                      ⚔ RIVAL {rivalCountdown(c.contested.acceptedAtSec, c.contested.rivalEtaSec, now)}
+                    </Chip>
+                  )}
+                </p>
+              )}
+            </button>
+            <div className="mt-1.5 flex justify-end">
+              <button
+                onClick={() => { audio.uiTick(); standDown(c.id) }}
+                className="rounded border border-red-500/30 px-2 py-0.5 text-[10px] text-red-400/70 transition hover:border-red-500/60 hover:text-red-400"
+              >
+                STAND DOWN
+              </button>
+            </div>
+          </div>
         ))}
 
         {available.length === 0 && active.length === 0 && (

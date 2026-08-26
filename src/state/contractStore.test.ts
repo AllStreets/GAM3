@@ -452,3 +452,88 @@ describe('contractStore', () => {
     expect(repBefore - useAgencyStore.getState().reputation).toBe(5)
   })
 })
+
+// ─── standDown ───────────────────────────────────────────────────────────────
+
+describe('contractStore.standDown', () => {
+  beforeEach(() => {
+    useContractStore.getState().resetForTest()
+    useAgencyStore.getState().resetForTest()
+    useGameStore.getState().resetForTest()
+    useStoryStore.getState().resetForTest()
+  })
+
+  it('returns false for a non-existent contract', () => {
+    expect(useContractStore.getState().standDown('nope')).toBe(false)
+  })
+
+  it('returns false for an available (not active) contract', () => {
+    useContractStore.getState().setAvailable([mk()])
+    expect(useContractStore.getState().standDown('c1')).toBe(false)
+    expect(useContractStore.getState().contracts[0].status).toBe('available')
+  })
+
+  it('sets an active contract to failed', () => {
+    useContractStore.getState().setAvailable([mk()])
+    useContractStore.getState().accept('c1')
+    expect(useContractStore.getState().standDown('c1')).toBe(true)
+    const c = useContractStore.getState().contracts.find((x) => x.id === 'c1')!
+    expect(c.status).toBe('failed')
+  })
+
+  it('clears targetId when it pointed at the stood-down contract', () => {
+    useContractStore.getState().setAvailable([mk()])
+    useContractStore.getState().accept('c1')
+    // accept sets targetId to c1
+    expect(useContractStore.getState().targetId).toBe('c1')
+    useContractStore.getState().standDown('c1')
+    expect(useContractStore.getState().targetId).toBeNull()
+  })
+
+  it('does NOT clear targetId when it pointed at a different contract', () => {
+    // Accept two contracts — one will be stood down, one remains active as target.
+    // Boost reputation to allow 2 active contracts.
+    useAgencyStore.getState().addReputation(60)
+    useContractStore.getState().setAvailable([mk(), mk({ id: 'c2' })])
+    useContractStore.getState().accept('c1')
+    useContractStore.getState().accept('c2')
+    useContractStore.getState().setTarget('c2') // target points at c2
+    useContractStore.getState().standDown('c1') // stand down c1, not c2
+    expect(useContractStore.getState().targetId).toBe('c2')
+  })
+
+  it('applies a -2 rep ding when agency is NOT stuck', () => {
+    useAgencyStore.getState().addReputation(30) // give some rep
+    const repBefore = useAgencyStore.getState().reputation
+    useContractStore.getState().setAvailable([mk()])
+    useContractStore.getState().accept('c1')
+    // Agency has funds (default 500) and full satellites → not stuck
+    useContractStore.getState().standDown('c1')
+    expect(useAgencyStore.getState().reputation).toBe(repBefore - 2)
+  })
+
+  it('waives the rep ding when agency IS stuck (funds=0 and all sats dry)', () => {
+    useAgencyStore.getState().addReputation(30)
+    // Set all satellites to 0 fuel and funds to 0 so the agency is stuck.
+    useGameStore.setState({
+      satellites: useGameStore.getState().satellites.map((s) => ({ ...s, fuel: 0 })),
+    })
+    useAgencyStore.setState({ funding: 0 })
+    const repBefore = useAgencyStore.getState().reputation
+    useContractStore.getState().setAvailable([mk()])
+    useContractStore.getState().accept('c1')
+    useContractStore.getState().standDown('c1')
+    // Rep should be unchanged (ding waived)
+    expect(useAgencyStore.getState().reputation).toBe(repBefore)
+  })
+
+  it('emits a "Stood down from ..." dispatch to storyStore', () => {
+    useContractStore.getState().setAvailable([mk()])
+    useContractStore.getState().accept('c1')
+    useContractStore.getState().standDown('c1')
+    const dispatches = useStoryStore.getState().dispatches
+    expect(dispatches.length).toBeGreaterThan(0)
+    expect(dispatches[0].text).toMatch(/stood down from Test/i)
+    expect(dispatches[0].source).toBe('story')
+  })
+})

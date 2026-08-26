@@ -33,6 +33,12 @@ const DEFAULTS: Persisted = {
 }
 
 interface AgencyState extends Persisted {
+  /**
+   * Refuel efficiency upgrade level (0 = base, increased by Plan T4).
+   * Stored here as a transient optional so gameStore / contractStore can read it
+   * without TS errors; T4 will wire it into Persisted and DEFAULTS.
+   */
+  refuelEfficiencyLevel?: number
   found(name: string, emblemId: string, colorway: string): void
   addFunding(n: number): void
   spendFunding(n: number): boolean

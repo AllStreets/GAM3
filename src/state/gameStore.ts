@@ -3,7 +3,7 @@ import {
   applyDeltaV, MS_TO_ER, orbitalPeriod, type OrbitalElements,
 } from '@/lib/orbits'
 import { recordBurn, recordAbort } from '@/lib/profile'
-import { refuelPrice, SATELLITE_PRICE } from '@/lib/economy'
+import { refuelPrice, SATELLITE_PRICE, refuelPricePerDv, affordableRefuelDv } from '@/lib/economy'
 import { useAgencyStore } from '@/state/agencyStore'
 import { loadJSON, saveJSON, clearKey } from '@/lib/persist'
 import {
@@ -109,7 +109,7 @@ interface GameState {
   beginBurn(): boolean
   completeBurn(at: number, quality: number): boolean
   abortBurn(): void
-  refuelSatellite(id: string): boolean
+  refuelSatellite(id: string, dv?: number): boolean
   buySatellite(): boolean
   hydrate(): void
   recordContractPass(satId: string, note?: string): void
@@ -242,15 +242,24 @@ export const useGameStore = create<GameState>((set, get) => ({
   resetStreak: () => set({ streak: 0 }),
   clearLastManeuver: () => set({ lastManeuver: null, lastTrickShot: null }),
 
-  refuelSatellite: (id) => {
+  refuelSatellite: (id, dv?) => {
     const sat = get().satellites.find((s) => s.id === id)
     if (!sat) return false
     const missing = sat.fuelCapacity - sat.fuel
     if (missing <= 0) return false
-    const price = refuelPrice(missing)
-    if (!useAgencyStore.getState().spendFunding(price)) return false
+    const pricePerDv = refuelPricePerDv(useAgencyStore.getState().refuelEfficiencyLevel ?? 0)
+    const funds = useAgencyStore.getState().funding
+    // Determine the Δv to buy: explicit arg (capped), or the affordable partial amount.
+    const targetDv = dv != null
+      ? Math.min(dv, missing)
+      : affordableRefuelDv(missing, funds, pricePerDv)
+    if (targetDv <= 0) return false
+    const cost = Math.ceil(targetDv * pricePerDv)
+    if (!useAgencyStore.getState().spendFunding(cost)) return false
     set((s) => ({
-      satellites: s.satellites.map((x) => (x.id === id ? { ...x, fuel: x.fuelCapacity } : x)),
+      satellites: s.satellites.map((x) =>
+        x.id === id ? { ...x, fuel: Math.min(x.fuelCapacity, x.fuel + targetDv) } : x,
+      ),
     }))
     saveJSON(FLEET_KEY, { satellites: get().satellites, lastConjunctionAt: get().lastConjunctionAt })
     return true

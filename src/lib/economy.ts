@@ -29,3 +29,27 @@ export function contractReward(severity: number): { funding: number; reputation:
 export function contractDeadline(simNow: number, periodSec: number): number {
   return simNow + 5 * periodSec
 }
+
+/**
+ * Cost per m/s of delta-v when refuelling.
+ * At efficiency level 0 (default) this equals the base rate (0.6 §/m/s) so
+ * ceil(missing * refuelPricePerDv(0)) === refuelPrice(missing) exactly.
+ * Higher efficiency levels (wired in by Plan T4) reduce the rate.
+ */
+export function refuelPricePerDv(efficiencyLevel = 0): number {
+  // Base rate: 0.6 §/m/s  (matches existing refuelPrice)
+  // Each efficiency level reduces cost by 10%, floored at 0.1 §/m/s.
+  const base = 0.6
+  const rate = base * Math.pow(0.9, Math.max(0, efficiencyLevel))
+  return Math.max(0.1, rate)
+}
+
+/**
+ * How many m/s of delta-v the player can afford with `funds` at `pricePerDv`.
+ * Capped at `missingDv` (can't buy more than the tank needs).
+ * Returns a non-negative integer (floor).
+ */
+export function affordableRefuelDv(missingDv: number, funds: number, pricePerDv: number): number {
+  if (pricePerDv <= 0 || funds <= 0 || missingDv <= 0) return 0
+  return Math.floor(Math.min(missingDv, funds / pricePerDv))
+}

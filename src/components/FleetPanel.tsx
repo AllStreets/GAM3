@@ -5,7 +5,7 @@ import { useGameStore, burnCost, type Satellite } from '@/state/gameStore'
 import { propagate, ER_KM, orbitalPeriod } from '@/lib/orbits'
 import { simNow } from '@/lib/simTime'
 import { audio } from '@/audio/AudioEngine'
-import { SATELLITE_PRICE, refuelPrice } from '@/lib/economy'
+import { SATELLITE_PRICE, refuelPrice, refuelPricePerDv, affordableRefuelDv } from '@/lib/economy'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
 import { closestApproach, COMPLETION_RADIUS_KM } from '@/lib/intercept'
@@ -182,20 +182,57 @@ export default function FleetPanel() {
           </section>
         )}
 
-        <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
-          {selected && (
-            <button
-              onClick={() => { if (refuelSatellite(selected.id)) audio.uiTick() }}
-              disabled={selected.fuel >= selected.fuelCapacity || funding < refuelPrice(selected.fuelCapacity - selected.fuel)}
-              className="rounded border border-white/15 px-2 py-1 text-[11px] transition enabled:hover:border-white/40 disabled:opacity-30"
-            >
-              REFUEL §{refuelPrice((selected?.fuelCapacity ?? 0) - (selected?.fuel ?? 0))}
-            </button>
-          )}
+        <div className="mt-3 flex flex-col gap-2 border-t border-white/10 pt-3">
+          {selected && (() => {
+            const missing = selected.fuelCapacity - selected.fuel
+            const pricePerDv = refuelPricePerDv(0) // efficiency level 0; T4 will thread the level in
+            const affordDv = affordableRefuelDv(missing, funding, pricePerDv)
+            const affordCost = Math.ceil(affordDv * pricePerDv)
+            const fullCost = refuelPrice(missing)
+            const canAffordFull = funding >= fullCost && missing > 0
+            const canAffordAny = affordDv > 0
+            const isFull = missing <= 0
+
+            if (isFull) {
+              return (
+                <button disabled className="rounded border border-white/15 px-2 py-1 text-[11px] disabled:opacity-30">
+                  REFUEL — full
+                </button>
+              )
+            }
+
+            if (!canAffordAny) {
+              const shortfall = Math.ceil(1 * pricePerDv) // cost of 1 Δv
+              return (
+                <button disabled className="rounded border border-white/15 px-2 py-1 text-[11px] disabled:opacity-30">
+                  REFUEL — §{shortfall} short
+                </button>
+              )
+            }
+
+            return (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { if (refuelSatellite(selected.id)) audio.uiTick() }}
+                  className="rounded border border-white/15 px-2 py-1 text-[11px] transition hover:border-white/40"
+                >
+                  REFUEL +{affordDv} Δv · §{affordCost}
+                </button>
+                {canAffordFull && affordDv < missing && (
+                  <button
+                    onClick={() => { if (refuelSatellite(selected.id, missing)) audio.uiTick() }}
+                    className="rounded border border-white/15 px-2 py-1 text-[11px] opacity-70 transition hover:border-white/40 hover:opacity-100"
+                  >
+                    FULL · §{fullCost}
+                  </button>
+                )}
+              </div>
+            )
+          })()}
           <button
             onClick={() => { if (buySatellite()) audio.chirp() }}
             disabled={funding < SATELLITE_PRICE}
-            className="ml-auto rounded border border-[var(--accent)]/40 px-2 py-1 text-[11px] text-[var(--accent)] transition enabled:hover:bg-[var(--accent)]/10 disabled:opacity-30"
+            className="self-end rounded border border-[var(--accent)]/40 px-2 py-1 text-[11px] text-[var(--accent)] transition enabled:hover:bg-[var(--accent)]/10 disabled:opacity-30"
           >
             BUY SATELLITE §{SATELLITE_PRICE}
           </button>

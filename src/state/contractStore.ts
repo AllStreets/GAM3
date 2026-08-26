@@ -20,6 +20,7 @@ import {
   type ObjectiveProgress,
 } from '@/lib/contractObjective'
 import { rivalEtaSec, applyRaceResult } from '@/lib/rival'
+import { refuelPricePerDv, SATELLITE_PRICE } from '@/lib/economy'
 
 const KEY = 'hyperion-contracts-v1'
 
@@ -124,6 +125,14 @@ interface ContractState extends Persisted {
   setTarget(id: string | null): void
   evaluate(satellites: Satellite[], simTime: number): { completed: Contract[]; failed: Contract[] }
   clearCompletion(): void
+  /**
+   * Voluntarily abandon an ACTIVE contract (stand down).
+   * Sets the contract to 'failed', frees the committed satellite (clears targetId if it
+   * pointed at this contract), emits a dispatch, and applies a reputation ding
+   * (waived if the agency is stuck: funds === 0 and all sats have little fuel).
+   * Returns false if the contract is not found or not active.
+   */
+  standDown(id: string): boolean
   hydrate(): void
   resetForTest(): void
 }
@@ -387,6 +396,50 @@ export const useContractStore = create<ContractState>((set, get) => ({
       save(get)
     }
     return { completed, failed }
+  },
+
+  standDown: (id) => {
+    const s = get()
+    const c = s.contracts.find((x) => x.id === id)
+    if (!c || c.status !== 'active') return false
+
+    // Mark contract as failed (soft — keeps history consistent).
+    const updated = s.contracts.map((x) =>
+      x.id === id ? { ...x, status: 'failed' as const } : x,
+    )
+    // Free the committed satellite by clearing targetId if it pointed here.
+    const nextTargetId = s.targetId === id ? null : s.targetId
+
+    // Determine if we should waive the reputation penalty.
+    // Approximation: agency is "stuck" if funds are 0 (can't refuel or buy a new sat)
+    // AND no satellite has meaningful fuel to fly anything useful.
+    // This intentionally doesn't require any active contracts to be present —
+    // it reflects the player's overall resource state at stand-down time.
+    const fleet = useGameStore.getState().satellites
+    const funds = useAgencyStore.getState().funding
+    const pricePerDv = refuelPricePerDv(useAgencyStore.getState().refuelEfficiencyLevel ?? 0)
+    const maxFuel = fleet.reduce((best, sat) => Math.max(best, sat.fuel), 0)
+    // "Near-empty" heuristic: max fuel is less than 50 m/s (can't reach anything useful).
+    const fleetDry = maxFuel < 50
+    // Can't buy a new satellite or afford any refuel at all.
+    const cantAffordAnything = funds < Math.ceil(1 * pricePerDv) && funds < SATELLITE_PRICE
+    const stuck = fleetDry && cantAffordAnything
+
+    if (!stuck) {
+      useAgencyStore.getState().addReputation(-2)
+    }
+
+    // Emit a stand-down dispatch.
+    useStoryStore.getState().addDispatch({
+      id: `standdown-${id}-${Date.now()}`,
+      at: Date.now(),
+      text: `Stood down from ${c.title}.`,
+      source: 'story',
+    })
+
+    set({ contracts: updated, targetId: nextTargetId })
+    save(get)
+    return true
   },
 
   clearCompletion: () => set({ lastCompletion: null }),
