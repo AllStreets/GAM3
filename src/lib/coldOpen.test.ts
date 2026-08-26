@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { buildColdOpen } from './coldOpen'
+import { buildColdOpen, digestLines } from './coldOpen'
 import { TIME_SCALE } from './simTime'
+import type { WorldDigest } from './worldTick'
 
 // Fixed wall clock value used across tests — avoids any real Date.now() calls.
 const NOW_WALL_MS = new Date('2026-06-15T12:00:00Z').getTime()
@@ -153,7 +154,7 @@ describe('buildColdOpen', () => {
 
     it('always includes sim-days line when returning', () => {
       const r = buildColdOpen({ lastSeenIso: LAST_SEEN_2H_AGO, nowWallMs: NOW_WALL_MS, events: [], contracts: [] })
-      expect(r.lines.some((l) => l.includes('WHILE YOU WERE AWAY'))).toBe(true)
+      expect(r.lines.some((l) => l.includes('sim-day'))).toBe(true)
     })
 
     it('omits event/contract lines when counts are zero', () => {
@@ -181,5 +182,100 @@ describe('buildColdOpen', () => {
       const r = buildColdOpen({ lastSeenIso: null, nowWallMs: NOW_WALL_MS, events: BASE_EVENTS, contracts: BASE_CONTRACTS })
       expect(r.lines).toEqual([])
     })
+  })
+})
+
+// ─── digestLines ─────────────────────────────────────────────────────────────
+
+const BASE_DIGEST: WorldDigest = {
+  atSim: 100_000,
+  contractsExpired: [],
+  rivalClaimed: [],
+  newOffers: 0,
+  arcBeat: null,
+  dispatches: [],
+}
+
+describe('digestLines', () => {
+  it('returns empty array for a fully empty digest', () => {
+    expect(digestLines(BASE_DIGEST)).toEqual([])
+  })
+
+  it('includes one line per rivalClaimed entry', () => {
+    const d: WorldDigest = { ...BASE_DIGEST, rivalClaimed: ['Ende Aftershock Watch', 'Flood Zone Delta'] }
+    const lines = digestLines(d)
+    expect(lines.some((l) => l.includes('Ende Aftershock Watch'))).toBe(true)
+    expect(lines.some((l) => l.includes('Flood Zone Delta'))).toBe(true)
+    expect(lines.filter((l) => l.includes('claimed') || l.includes('VANTIS'))).toHaveLength(2)
+  })
+
+  it('includes a summary line for expired contracts', () => {
+    const d: WorldDigest = { ...BASE_DIGEST, contractsExpired: ['Alpha', 'Beta', 'Gamma'] }
+    const lines = digestLines(d)
+    expect(lines.some((l) => l.includes('3') && l.includes('expired'))).toBe(true)
+  })
+
+  it('uses singular "tasking" for a single expiry', () => {
+    const d: WorldDigest = { ...BASE_DIGEST, contractsExpired: ['Solo Tasking'] }
+    const lines = digestLines(d)
+    const expiredLine = lines.find((l) => l.includes('expired'))
+    expect(expiredLine).toBeDefined()
+    expect(expiredLine).toMatch(/1 tasking expired/)
+  })
+
+  it('includes a new-offers line when newOffers > 0', () => {
+    const d: WorldDigest = { ...BASE_DIGEST, newOffers: 4 }
+    const lines = digestLines(d)
+    expect(lines.some((l) => l.includes('4') && l.includes('contract'))).toBe(true)
+  })
+
+  it('uses singular "contract" for newOffers === 1', () => {
+    const d: WorldDigest = { ...BASE_DIGEST, newOffers: 1 }
+    const lines = digestLines(d)
+    expect(lines.some((l) => l.match(/1 new contract/))).toBe(true)
+  })
+
+  it('includes the arcBeat line when present', () => {
+    const d: WorldDigest = { ...BASE_DIGEST, arcBeat: 'SENTINEL: the watch continues; no ground lost.' }
+    const lines = digestLines(d)
+    expect(lines.some((l) => l.includes('SENTINEL'))).toBe(true)
+  })
+
+  it('omits arcBeat line when null', () => {
+    const d: WorldDigest = { ...BASE_DIGEST, arcBeat: null }
+    const lines = digestLines(d)
+    expect(lines).toHaveLength(0)
+  })
+
+  it('is deterministic — same input always same output', () => {
+    const d: WorldDigest = {
+      atSim: 200_000,
+      contractsExpired: ['A', 'B'],
+      rivalClaimed: ['C'],
+      newOffers: 3,
+      arcBeat: 'SENTINEL: escalating.',
+      dispatches: ['some dispatch'],
+    }
+    expect(digestLines(d)).toEqual(digestLines(d))
+    expect(digestLines(d)).toEqual(digestLines({ ...d }))
+  })
+
+  it('full digest produces lines in correct order: rival → expired → offers → arc', () => {
+    const d: WorldDigest = {
+      atSim: 300_000,
+      contractsExpired: ['Exp1'],
+      rivalClaimed: ['Claim1'],
+      newOffers: 2,
+      arcBeat: 'ARC BEAT LINE',
+      dispatches: [],
+    }
+    const lines = digestLines(d)
+    const claimIdx = lines.findIndex((l) => l.includes('Claim1'))
+    const expiredIdx = lines.findIndex((l) => l.includes('expired'))
+    const offersIdx = lines.findIndex((l) => l.includes('contract'))
+    const arcIdx = lines.findIndex((l) => l.includes('ARC BEAT LINE'))
+    expect(claimIdx).toBeLessThan(expiredIdx)
+    expect(expiredIdx).toBeLessThan(offersIdx)
+    expect(offersIdx).toBeLessThan(arcIdx)
   })
 })

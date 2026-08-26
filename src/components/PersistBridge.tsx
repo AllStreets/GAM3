@@ -28,6 +28,8 @@ import { useAuth } from '@clerk/nextjs'
 import { getAnonId } from '@/lib/anonId'
 import { saveJSON } from '@/lib/persist'
 import { markSynced, markOffline } from '@/lib/persistStatus'
+import { setDigest, hasDigestChanges } from '@/lib/worldDigest'
+import type { WorldDigest } from '@/lib/worldTick'
 import { useGameStore } from '@/state/gameStore'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
@@ -40,6 +42,7 @@ const CONTRACTS_KEY = 'hyperion-contracts-v1'
 const STORY_KEY = 'hyperion-story-v1'
 const PROFILE_KEY = 'hyperion-profile-v1'
 const ONBOARDED_KEY = 'hyperion-onboarded-v1'
+const WORLD_DIGEST_KEY = 'hyperion-worlddigest-v1'
 
 // ── Debounce helper ──────────────────────────────────────────────────────────
 function debounce<T extends unknown[]>(
@@ -135,6 +138,20 @@ function applyServerSaves(saves: { key: string; data: unknown }[]): void {
   }
   if (serverSaves.has(ONBOARDED_KEY)) {
     saveJSON(ONBOARDED_KEY, serverSaves.get(ONBOARDED_KEY))
+  }
+
+  // ── WorldDigest: surface it via the worldDigest signal store ──────────────
+  // Only expose if it has actual changes (non-empty expired/claimed/offers/arc/dispatches).
+  if (serverSaves.has(WORLD_DIGEST_KEY)) {
+    const raw = serverSaves.get(WORLD_DIGEST_KEY) as WorldDigest | null | undefined
+    if (
+      raw &&
+      typeof raw === 'object' &&
+      typeof raw.atSim === 'number' &&
+      hasDigestChanges(raw)
+    ) {
+      setDigest(raw)
+    }
   }
 }
 
