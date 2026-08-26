@@ -76,3 +76,9 @@ export const useStoryStore = create<StoryState>((set, get) => ({
     set({ ...DEFAULTS })
   },
 }))
+
+// Expose the store on window in non-production so Playwright e2e tests can
+// seed dispatches and inspect story state without relying on the AI route.
+if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+  ;(window as unknown as Record<string, unknown>).__storyStore = useStoryStore
+}

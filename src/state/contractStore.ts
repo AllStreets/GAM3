@@ -300,7 +300,9 @@ export const useContractStore = create<ContractState>((set, get) => ({
         // Objective scale layer.
         const objScale = c.gameObjective ? objectiveRewardScale(c.gameObjective) : 1.0
         // Single award site: base × capabilityBonus × streakMult × objectiveScale.
-        funding = Math.round(funding * multiplier * objScale)
+        // Sanity-capped at §1500 so no single contract ever produces absurd windfalls
+        // (theoretical max without cap: §500 × 1.35 × 1.5 × 1.8 = §1822).
+        funding = Math.min(1500, Math.round(funding * multiplier * objScale))
         agency.addFunding(funding)
         agency.addReputation(c.reward.reputation)
         useAgencyStore.getState().advanceArchetype(c.archetype)
@@ -403,3 +405,9 @@ export const useContractStore = create<ContractState>((set, get) => ({
     set({ ...DEFAULTS, lastCompletion: null })
   },
 }))
+
+// Expose the store on window in non-production so Playwright e2e tests can
+// inspect contracts and seed state without relying on the briefing AI route.
+if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+  ;(window as unknown as Record<string, unknown>).__contractStore = useContractStore
+}

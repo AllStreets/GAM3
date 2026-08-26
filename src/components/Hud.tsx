@@ -51,8 +51,11 @@ export default function Hud() {
         <FleetPanel />
         <ContractsPanel />
       </div>
-      {/* Left rail: events feed + story dispatches, stacked */}
-      <div className="pointer-events-none fixed left-6 top-16 z-20 flex max-h-[calc(100dvh-8rem)] flex-col gap-3 overflow-y-auto">
+      {/* Left rail: events feed + story dispatches, stacked.
+          max-h reserves ~200px at the bottom so the rail never overlaps BriefingPanel (bottom-6,
+          ~200px tall) or the right-rail postcard/guide cluster (bottom-6 right-20).
+          overflow-y: auto lets the rail scroll as a unit if both panels are tall simultaneously. */}
+      <div className="pointer-events-none fixed left-6 top-16 z-20 flex max-h-[calc(100dvh-16rem)] flex-col gap-3 overflow-y-auto">
         <EventsPanel />
         <DispatchesFeed />
       </div>

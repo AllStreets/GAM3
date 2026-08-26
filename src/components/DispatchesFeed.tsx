@@ -44,7 +44,7 @@ export default function DispatchesFeed() {
           </button>
         </header>
         {!collapsed && (
-          <ul className="space-y-2">
+          <ul className="max-h-48 space-y-2 overflow-y-auto pr-0.5">
             {visible.map((d) => (
               <li key={d.id} className="flex flex-col gap-0.5">
                 <p

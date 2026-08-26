@@ -58,7 +58,7 @@ export default function EventsPanel() {
           <p className="py-4 text-center opacity-50">listening to the world…</p>
         ) : (
           <>
-            <ul className="max-h-[38vh] space-y-1 overflow-y-auto pr-1">
+            <ul className="max-h-[28vh] space-y-1 overflow-y-auto pr-1">
               {(expanded ? events : events.slice(0, 8)).map((ev) => {
               const g = GLYPH[ev.kind]
               const focused = ev.id === focusedId
