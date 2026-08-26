@@ -8,6 +8,7 @@
  */
 
 import { TIME_SCALE } from '@/lib/simTime'
+import type { WorldDigest } from '@/lib/worldTick'
 
 export interface ColdOpenSummary {
   simDaysElapsed: number
@@ -115,4 +116,50 @@ export function buildColdOpen(input: {
     lines,
     isReturning: true,
   }
+}
+
+// ─── digestLines ─────────────────────────────────────────────────────────────
+
+/**
+ * digestLines — Pure, deterministic mapping from a server WorldDigest to
+ * on-brand "while you were away" bullet lines.
+ *
+ * Order: rival claims → expired taskings → new offers → arc beat.
+ * Returns an empty array when the digest has no meaningful changes.
+ *
+ * Pure: no clock, no random, no network. Tests supply the digest directly.
+ */
+export function digestLines(digest: WorldDigest): string[] {
+  const lines: string[] = []
+
+  // Rival claims: one line per claimed title
+  for (const title of digest.rivalClaimed) {
+    lines.push(`⚔ VANTIS claimed ${title}`)
+  }
+
+  // Expired taskings: summary count line
+  const expiredCount = digest.contractsExpired.length
+  if (expiredCount > 0) {
+    lines.push(
+      expiredCount === 1
+        ? `1 tasking expired without fulfilment`
+        : `${expiredCount} taskings expired without fulfilment`,
+    )
+  }
+
+  // New offers on the board
+  if (digest.newOffers > 0) {
+    lines.push(
+      digest.newOffers === 1
+        ? `1 new contract on the board`
+        : `${digest.newOffers} new contracts on the board`,
+    )
+  }
+
+  // Arc beat: verbatim from the engine
+  if (digest.arcBeat !== null) {
+    lines.push(digest.arcBeat)
+  }
+
+  return lines
 }
