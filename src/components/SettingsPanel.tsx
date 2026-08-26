@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useAuth, useUser, SignInButton, SignOutButton } from '@clerk/nextjs'
 import { audio } from '@/audio/AudioEngine'
 
 /**
@@ -14,6 +15,10 @@ export default function SettingsPanel() {
   const [open, setOpen] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [muted, setMuted] = useState(false)
+
+  // Clerk auth state — degrades gracefully if Clerk is unavailable (isLoaded stays false).
+  const { isLoaded: clerkLoaded, isSignedIn } = useAuth()
+  const { user } = useUser()
 
   // Reflect the persisted mute state once mounted (audio is client-only).
   useEffect(() => {
@@ -90,6 +95,43 @@ export default function SettingsPanel() {
                 {muted ? '🔇 SOUND MUTED · tap to enable' : '🔊 SOUND ON · tap to mute'}
               </button>
             </div>
+
+            {/* Account */}
+            {clerkLoaded && (
+              <div className="mb-4">
+                <p className="mb-1.5 text-[9px] tracking-[0.3em] text-white/40">ACCOUNT</p>
+                {isSignedIn ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-[10px] text-white/60">
+                      {user?.primaryEmailAddress?.emailAddress ?? user?.firstName ?? 'Signed in'}
+                      <span className="ml-1.5 text-[9px] text-[var(--accent)]/70">· cloud save</span>
+                    </span>
+                    <SignOutButton>
+                      <button
+                        onClick={() => audio.uiTick()}
+                        className="shrink-0 rounded border border-white/15 px-2 py-1 text-[9px] text-white/50 transition hover:border-white/40 hover:text-white/90"
+                      >
+                        SIGN OUT
+                      </button>
+                    </SignOutButton>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="mb-2 text-[10px] leading-relaxed text-white/50">
+                      Sign in to sync your save across devices. Login is optional — the game works fully without it.
+                    </p>
+                    <SignInButton mode="modal">
+                      <button
+                        onClick={() => audio.uiTick()}
+                        className="w-full rounded border border-[var(--accent)]/40 px-3 py-2 text-[10px] text-[var(--accent)]/80 transition hover:border-[var(--accent)]/70 hover:text-[var(--accent)]"
+                      >
+                        SIGN IN · SYNC SAVES
+                      </button>
+                    </SignInButton>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Reset */}
             <div className="mb-2">

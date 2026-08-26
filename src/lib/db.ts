@@ -130,3 +130,39 @@ export async function deleteSaves(ownerId: string): Promise<void> {
     WHERE owner_id = ${ownerId}
   `
 }
+
+/**
+ * Migrate saves from an anonymous owner to a signed-in user.
+ *
+ * Strategy (no-clobber):
+ *   - If the user already has ANY saves → do nothing (prefer account data).
+ *   - If the user has NO saves → copy all anon rows to the user (upsert).
+ *
+ * This means a logged-out session's progress is adopted into the account on
+ * first sign-in, but an existing account is never overwritten.
+ */
+export async function migrateSaves(
+  anonId: string,
+  userId: string,
+): Promise<{ migrated: boolean }> {
+  const sql = getSql()
+
+  // Check if the user already has any saves.
+  const existingRows = await sql`
+    SELECT 1 FROM saves WHERE owner_id = ${userId} LIMIT 1
+  `
+  if (existingRows.length > 0) {
+    // Account already has saves — leave them intact.
+    return { migrated: false }
+  }
+
+  // Copy anon rows to userId (INSERT … ON CONFLICT DO NOTHING for safety).
+  await sql`
+    INSERT INTO saves (owner_id, store_key, data, updated_at)
+    SELECT ${userId}, store_key, data, updated_at
+    FROM   saves
+    WHERE  owner_id = ${anonId}
+    ON CONFLICT (owner_id, store_key) DO NOTHING
+  `
+  return { migrated: true }
+}

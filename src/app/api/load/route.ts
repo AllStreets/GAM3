@@ -13,6 +13,7 @@
  */
 
 import { NextRequest } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
 import { ensureSchema, loadSaves, DbUnavailableError } from '@/lib/db'
 
 // Run in the Node.js runtime (Neon driver requires Node — not Edge).
@@ -34,23 +35,25 @@ function err(reason: string): Response {
 
 export async function GET(request: NextRequest): Promise<Response> {
   try {
-    // --- owner id: header first, then query param ---
+    // --- owner id: Clerk userId if signed in, else header/query param ---
+    const { userId: clerkUserId } = await auth()
+
     const headerId = request.headers.get('x-anon-id')
     const { searchParams } = new URL(request.url)
     const queryId = searchParams.get('anonId')
 
-    const anonId = (headerId ?? queryId ?? '').trim()
+    const ownerId = (clerkUserId ?? headerId ?? queryId ?? '').trim()
 
-    if (!anonId) {
-      return err('missing owner id (x-anon-id header or anonId query param)')
+    if (!ownerId) {
+      return err('missing owner id (sign in, x-anon-id header, or anonId query param)')
     }
-    if (anonId.length > MAX_ANON_ID_LEN) {
+    if (ownerId.length > MAX_ANON_ID_LEN) {
       return err('owner id too long')
     }
 
     // --- fetch saves ---
     await ensureSchema()
-    const saves = await loadSaves(anonId)
+    const saves = await loadSaves(ownerId)
 
     return ok(saves)
   } catch (e) {
