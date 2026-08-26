@@ -111,16 +111,27 @@ export default function ColdOpenScreen() {
         </h1>
         <span className="mb-4 block h-px w-full bg-[var(--accent)]/20" />
 
-        {/* Standard recap bullet lines */}
-        {hasStandardRecap && summary && (
-          <ul className="mb-5 space-y-2 text-xs leading-relaxed">
-            {summary.lines.map((line, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)] opacity-80" />
-                <span className={i === 0 ? 'font-semibold tracking-wide' : 'opacity-85'}>{line}</span>
-              </li>
-            ))}
-          </ul>
+        {/* Unified "WHILE YOU WERE AWAY" section — one heading, all recap + digest lines */}
+        {(hasStandardRecap || hasDigestSection) && (
+          <div className="mb-5">
+            <p className="mb-2 text-[10px] tracking-[0.35em] opacity-50">WHILE YOU WERE AWAY</p>
+            <ul className="space-y-2 text-xs leading-relaxed">
+              {/* Standard recap lines (sim-days elapsed, new events, completions, expiries) */}
+              {hasStandardRecap && summary && summary.lines.map((line, i) => (
+                <li key={`recap-${i}`} className="flex items-start gap-2">
+                  <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)] opacity-80" />
+                  <span className={i === 0 ? 'font-semibold tracking-wide' : 'opacity-85'}>{line}</span>
+                </li>
+              ))}
+              {/* Server digest lines (rival claims, expiries, new offers, arc beat) */}
+              {hasDigestSection && digestContent && digestContent.lines.map((line, i) => (
+                <li key={`digest-${i}`} className="flex items-start gap-2">
+                  <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]/60 opacity-80" />
+                  <span className="opacity-85">{line}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {/* Headline events */}
@@ -134,21 +145,6 @@ export default function ColdOpenScreen() {
                   className="rounded border border-white/8 bg-white/[0.03] px-3 py-1.5 text-xs text-[var(--text)] opacity-90"
                 >
                   {title}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Server digest section — "while you were away" from the tick */}
-        {hasDigestSection && digestContent && (
-          <div className={hasStandardRecap && summary && summary.lines.length > 0 ? 'mb-5 border-t border-[var(--accent)]/15 pt-4' : 'mb-5'}>
-            <p className="mb-2 text-[10px] tracking-[0.35em] opacity-50">WHILE YOU WERE AWAY</p>
-            <ul className="space-y-2">
-              {digestContent.lines.map((line, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs leading-relaxed">
-                  <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]/60 opacity-80" />
-                  <span className="opacity-85">{line}</span>
                 </li>
               ))}
             </ul>

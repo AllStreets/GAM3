@@ -154,7 +154,7 @@ describe('buildColdOpen', () => {
 
     it('always includes sim-days line when returning', () => {
       const r = buildColdOpen({ lastSeenIso: LAST_SEEN_2H_AGO, nowWallMs: NOW_WALL_MS, events: [], contracts: [] })
-      expect(r.lines.some((l) => l.includes('WHILE YOU WERE AWAY'))).toBe(true)
+      expect(r.lines.some((l) => l.includes('sim-day'))).toBe(true)
     })
 
     it('omits event/contract lines when counts are zero', () => {

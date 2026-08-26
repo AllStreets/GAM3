@@ -87,7 +87,7 @@ export function buildColdOpen(input: {
     simDaysElapsed === 1
       ? '1 sim-day elapsed'
       : `${simDaysElapsed} sim-days elapsed`
-  lines.push(`WHILE YOU WERE AWAY — ${simDaysStr}`)
+  lines.push(simDaysStr)
 
   if (newEventCount > 0) {
     lines.push(

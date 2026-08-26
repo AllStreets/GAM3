@@ -21,7 +21,7 @@
 
 import { NextResponse } from 'next/server'
 import { orbitalPeriod } from '@/lib/orbits'
-import { simNow } from '@/lib/simTime'
+import { simNow, TIME_SCALE } from '@/lib/simTime'
 import {
   DbUnavailableError,
   dueOwnersForTick,
@@ -46,6 +46,13 @@ const ACTIVE_WITHIN_SEC = 300
 
 /** Maximum owners processed per tick (keeps wall-time bounded). */
 const OWNER_CAP = 50
+
+/**
+ * Minimum sim-second interval between ticks for the same owner.
+ * Cron runs every 20 wall-minutes → 20 × 60 × TIME_SCALE sim-seconds.
+ * We use 80 % of that so a slightly-early cron fire doesn't skip everyone.
+ */
+const MIN_TICK_INTERVAL_SIM = Math.floor(20 * 60 * TIME_SCALE * 0.8)
 
 export async function GET(request: Request): Promise<NextResponse> {
   // ── 1. Auth ──────────────────────────────────────────────────────────────────
@@ -81,8 +88,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       events = []
     }
 
-    // Find offline owners due for a tick (max OWNER_CAP per run)
-    const owners = await dueOwnersForTick(ACTIVE_WITHIN_SEC, OWNER_CAP)
+    // Find offline owners due for a tick (max OWNER_CAP per run).
+    // Gates: offline (not saved within ACTIVE_WITHIN_SEC) AND not ticked within
+    // MIN_TICK_INTERVAL_SIM sim-seconds (prevents double-tick on the same owner).
+    const owners = await dueOwnersForTick(ACTIVE_WITHIN_SEC, OWNER_CAP, nowSim, MIN_TICK_INTERVAL_SIM)
 
     let processed = 0
     let skipped = 0

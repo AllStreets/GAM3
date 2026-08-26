@@ -195,6 +195,13 @@ export async function migrateSaves(
  *   - Their most-recently-updated save row is OLDER than `activeWithinSec` seconds
  *     ago (i.e. they are not in an active live session).
  *   - They have at least one save row (i.e. they have played the game).
+ *   - Their `hyperion-worldmeta-v1` blob is missing OR its `lastTickSim` is
+ *     older than `minIntervalSec` sim-seconds ago (prevents re-ticking the same
+ *     owner within a cron interval).
+ *
+ * `minIntervalSec` is a sim-second threshold: owners whose last tick sim-time
+ * was within this many sim-seconds of `nowSim` are skipped. Pass `simNow()`
+ * as `nowSim` and the cron period (in sim-seconds) as `minIntervalSec`.
  *
  * Parameterised SQL throughout. Throws DbUnavailableError when the database is
  * not configured.
@@ -202,15 +209,35 @@ export async function migrateSaves(
 export async function dueOwnersForTick(
   activeWithinSec: number,
   limit: number,
+  nowSim: number,
+  minIntervalSec: number,
 ): Promise<string[]> {
   const sql = getSql()
-  // Cast limit/activeWithinSec to int for safety even though they're numbers.
+  // The worldmeta gate: include an owner only if their worldmeta row is absent OR
+  // their lastTickSim (stored as a JSON number in the `data` jsonb column) is
+  // older than (nowSim - minIntervalSec).
+  const minLastTickSim = nowSim - minIntervalSec
   const rows = await sql`
-    SELECT owner_id
-    FROM   saves
-    GROUP  BY owner_id
-    HAVING MAX(updated_at) < now() - (${activeWithinSec} || ' seconds')::interval
-    ORDER  BY MAX(updated_at) ASC
+    SELECT s.owner_id
+    FROM   saves s
+    GROUP  BY s.owner_id
+    HAVING
+      -- Not in an active live session
+      MAX(s.updated_at) < now() - (${activeWithinSec} || ' seconds')::interval
+      AND (
+        -- No worldmeta row at all (never been ticked)
+        MAX(CASE WHEN s.store_key = 'hyperion-worldmeta-v1'
+                 THEN (s.data->>'lastTickSim')::numeric
+                 ELSE NULL
+            END) IS NULL
+        OR
+        -- lastTickSim is older than the minimum interval
+        MAX(CASE WHEN s.store_key = 'hyperion-worldmeta-v1'
+                 THEN (s.data->>'lastTickSim')::numeric
+                 ELSE NULL
+            END) < ${minLastTickSim}
+      )
+    ORDER  BY MAX(s.updated_at) ASC
     LIMIT  ${limit}
   `
   return (rows as { owner_id: string }[]).map((r) => r.owner_id)
