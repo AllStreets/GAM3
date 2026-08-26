@@ -92,6 +92,8 @@ export default function ContractsPanel() {
   const rival = useStoryStore((s) => s.rival)
 
   const [now, setNow] = useState<number | null>(null)
+  // Two-step confirm for STAND DOWN so a mis-click never abandons a contract.
+  const [standDownConfirmId, setStandDownConfirmId] = useState<string | null>(null)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(simNow())
@@ -195,13 +197,30 @@ export default function ContractsPanel() {
                 </p>
               )}
             </button>
-            <div className="mt-1.5 flex justify-end">
-              <button
-                onClick={() => { audio.uiTick(); standDown(c.id) }}
-                className="rounded border border-red-500/30 px-2 py-0.5 text-[10px] text-red-400/70 transition hover:border-red-500/60 hover:text-red-400"
-              >
-                STAND DOWN
-              </button>
+            <div className="mt-1.5 flex justify-end gap-1.5">
+              {standDownConfirmId === c.id ? (
+                <>
+                  <button
+                    onClick={() => { audio.uiTick(); standDown(c.id); setStandDownConfirmId(null) }}
+                    className="rounded border border-red-500/70 bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-300 transition hover:bg-red-500/25"
+                  >
+                    CONFIRM STAND DOWN
+                  </button>
+                  <button
+                    onClick={() => setStandDownConfirmId(null)}
+                    className="rounded border border-white/15 px-2 py-0.5 text-[10px] text-white/50 transition hover:border-white/40 hover:text-white/80"
+                  >
+                    CANCEL
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => { audio.uiTick(); setStandDownConfirmId(c.id) }}
+                  className="rounded border border-red-500/30 px-2 py-0.5 text-[10px] text-red-400/70 transition hover:border-red-500/60 hover:text-red-400"
+                >
+                  STAND DOWN
+                </button>
+              )}
             </div>
           </div>
         ))}
