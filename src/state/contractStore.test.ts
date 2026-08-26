@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useContractStore, type Contract } from './contractStore'
 import { useAgencyStore } from './agencyStore'
 import { useGameStore } from './gameStore'
+import { useStoryStore } from './storyStore'
 import { subPoint } from '@/lib/intercept'
 import { matchBonusFunding } from '@/lib/contractMeta'
 import { saveJSON } from '@/lib/persist'
+import { type Objective, objectiveRewardScale } from '@/lib/contractObjective'
 
 // Use a far-future deadline (sim-seconds) so tests do not inadvertently hit the
 // stale-contract expiry guard. Individual tests that want to test expiry pass
@@ -21,6 +23,7 @@ beforeEach(() => {
   useContractStore.getState().resetForTest()
   useAgencyStore.getState().resetForTest()
   useGameStore.getState().resetForTest()
+  useStoryStore.getState().resetForTest()
 })
 
 describe('contractStore', () => {
@@ -281,5 +284,171 @@ describe('contractStore', () => {
     useContractStore.getState().addContract(c)
     useContractStore.getState().addContract(c)
     expect(useContractStore.getState().contracts).toHaveLength(1)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Objective-aware contract tests
+  // ---------------------------------------------------------------------------
+
+  it('objective contract does NOT complete on first in-range eval (multi-pass, needs 3)', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    const gameObjective: Objective = { type: 'multi-pass', label: 'Monitor — 3 passes', params: { passes: 3 } }
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon, gameObjective })])
+    useContractStore.getState().accept('c1')
+    // Initialise progress
+    const { completed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    // 1 pass done — not yet 3
+    expect(completed).toHaveLength(0)
+    const c = useContractStore.getState().contracts.find((x) => x.id === 'c1')!
+    expect(c.status).toBe('active')
+    expect(c.progress?.passesDone).toBe(1)
+  })
+
+  it('objective contract completes after enough passes (single-pass objective)', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    const gameObjective: Objective = { type: 'single-pass', label: 'Capture', params: {} }
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon, gameObjective })])
+    useContractStore.getState().accept('c1')
+    const { completed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(completed).toHaveLength(1)
+    expect(useContractStore.getState().contracts.find((x) => x.id === 'c1')!.status).toBe('completed')
+  })
+
+  it('objective reward is scaled by objectiveRewardScale (single funding award)', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // multi-sat objective: completed in one tick with one sat → sats threshold = 1
+    const gameObjective: Objective = { type: 'multi-sat', label: 'Track launch — 1 sat', params: { sats: 1 } }
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon, gameObjective, preferredCapability: 'imaging' })])
+    useContractStore.getState().accept('c1')
+    const before = useAgencyStore.getState().funding
+    const { completed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(completed).toHaveLength(1)
+    // sat[0] is imaging → matched → matchBonusFunding applied; streak=1 → mult=1; objScale from multi-sat/1 sat
+    const expectedBase = matchBonusFunding(200, true)
+    const streak = 1
+    const mult = 1 + Math.min(0.5, 0.1 * (streak - 1)) // = 1.0
+    const objScale = objectiveRewardScale(gameObjective)
+    const expected = Math.round(expectedBase * mult * objScale)
+    expect(useAgencyStore.getState().funding - before).toBe(expected)
+  })
+
+  it('no-objective contract (back-compat) still completes on first in-range eval', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // No gameObjective field
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon })])
+    useContractStore.getState().accept('c1')
+    const { completed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(completed).toHaveLength(1)
+  })
+
+  it('dwell objective accumulates progress across ticks', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // Use dwell: 90s — won't complete on the first tick (30s dt)
+    const gameObjective: Objective = { type: 'dwell', label: 'Comms dwell 90s', params: { dwellSec: 90 } }
+    useContractStore.getState().setAvailable([mk({ lat: sp.lat, lon: sp.lon, gameObjective })])
+    useContractStore.getState().accept('c1')
+    // Tick 1 — 30s accumulated, not done
+    useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    let c = useContractStore.getState().contracts.find((x) => x.id === 'c1')!
+    expect(c.status).toBe('active')
+    expect(c.progress?.dwellAccumSec).toBeGreaterThan(0)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Rival race adjudication tests
+  // ---------------------------------------------------------------------------
+
+  it('player beats rival: contested contract completes normally + rival dispatch emitted', () => {
+    const sat = useGameStore.getState().satellites[0]
+    const sp = subPoint(sat.elements, 5000)
+    // Inject a contested contract with a rival ETA far in the future (player
+    // will complete well before the rival).
+    const contestedContract = mk({
+      lat: sp.lat,
+      lon: sp.lon,
+      status: 'active',
+      contested: {
+        rivalEtaSec: 999_000, // rival arrives much later
+        acceptedAtSec: 0,     // accepted at t=0
+      },
+    })
+    useContractStore.setState((s) => ({
+      contracts: [...s.contracts, contestedContract],
+    }))
+
+    const beforeFunding = useAgencyStore.getState().funding
+    const beforeRivalLosses = useStoryStore.getState().rival.losses
+
+    const { completed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 5000)
+    expect(completed).toHaveLength(1)
+    expect(completed[0].status).toBe('completed')
+
+    // Funding should have been awarded (single award site)
+    expect(useAgencyStore.getState().funding).toBeGreaterThan(beforeFunding)
+
+    // Rival should have gained a loss
+    expect(useStoryStore.getState().rival.losses).toBe(beforeRivalLosses + 1)
+
+    // A rival dispatch should have been emitted
+    const rivalDispatches = useStoryStore.getState().dispatches.filter((d) => d.source === 'rival')
+    expect(rivalDispatches.length).toBeGreaterThan(0)
+    expect(rivalDispatches[0].text).toMatch(/beat/i)
+  })
+
+  it('rival claims contract when ETA elapses before player completes: soft-fail + rival wins++', () => {
+    // Give the agency some reputation so the rep ding is measurable
+    useAgencyStore.getState().addReputation(20)
+    // Contract at the north pole — satellite won't be overhead
+    const inaccessible = mk({
+      lat: 89,
+      lon: 0,
+      status: 'active',
+      contested: {
+        rivalEtaSec: 100,  // rival arrives at elapsed=100
+        acceptedAtSec: 0,  // accepted at sim t=0
+      },
+    })
+    useContractStore.setState((s) => ({
+      contracts: [...s.contracts, inaccessible],
+    }))
+
+    const repBefore = useAgencyStore.getState().reputation
+    const beforeRivalWins = useStoryStore.getState().rival.wins
+
+    // Evaluate at simTime=200 — rival ETA (100) has elapsed; player hasn't completed
+    const { failed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 200)
+    expect(failed).toHaveLength(1)
+    expect(failed[0].status).toBe('failed')
+
+    // Rival should have gained a win
+    expect(useStoryStore.getState().rival.wins).toBe(beforeRivalWins + 1)
+
+    // Rep ding should be small (only -1, not -5 like a normal expiry)
+    const repAfter = useAgencyStore.getState().reputation
+    expect(repBefore - repAfter).toBe(1)
+
+    // A rival dispatch should have been emitted
+    const rivalDispatches = useStoryStore.getState().dispatches.filter((d) => d.source === 'rival')
+    expect(rivalDispatches.length).toBeGreaterThan(0)
+    expect(rivalDispatches[0].text).toMatch(/reached/i)
+  })
+
+  it('non-contested contract failure still applies -5 rep penalty', () => {
+    // Give the agency some reputation so the rep ding is measurable
+    useAgencyStore.getState().addReputation(20)
+    useContractStore.getState().setAvailable([mk({ lat: 89, lon: 0 })])
+    useContractStore.getState().accept('c1')
+    useContractStore.setState((s) => ({
+      contracts: s.contracts.map((c) => c.id === 'c1' ? { ...c, deadline: 10 } : c),
+    }))
+    const repBefore = useAgencyStore.getState().reputation
+    const { failed } = useContractStore.getState().evaluate(useGameStore.getState().satellites, 999)
+    expect(failed).toHaveLength(1)
+    expect(repBefore - useAgencyStore.getState().reputation).toBe(5)
   })
 })

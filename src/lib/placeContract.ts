@@ -3,6 +3,7 @@ import type { Archetype } from '@/lib/archetype'
 import type { Capability } from '@/lib/satelliteMeta'
 import { contractReward, contractDeadline } from '@/lib/economy'
 import { archetypeForKind, capabilityForKind } from '@/lib/contractMeta'
+import { defaultObjective } from '@/lib/contractObjective'
 
 export interface PlaceContractInput {
   lat: number
@@ -23,6 +24,7 @@ export interface PlaceContractInput {
  */
 export function buildPlaceContract(i: PlaceContractInput): Contract {
   const id = `place-${Math.round(i.lat)}-${Math.round(i.lon)}-${Math.round(i.simNow)}`
+  const cap = i.preferredCapability ?? capabilityForKind('place')
   return {
     id,
     eventId: id,
@@ -35,6 +37,7 @@ export function buildPlaceContract(i: PlaceContractInput): Contract {
     reward: contractReward(i.severity ?? 0.5),
     status: 'available',
     archetype: i.archetype ?? archetypeForKind('place'),
-    preferredCapability: i.preferredCapability ?? capabilityForKind('place'),
+    preferredCapability: cap,
+    gameObjective: defaultObjective('place', cap),
   }
 }

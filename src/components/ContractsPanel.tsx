@@ -5,6 +5,7 @@ import { useContractStore } from '@/state/contractStore'
 import { useWorldStore } from '@/state/worldStore'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useGameStore } from '@/state/gameStore'
+import { useStoryStore } from '@/state/storyStore'
 import { simNow, TIME_SCALE } from '@/lib/simTime'
 import { maxActiveContracts } from '@/lib/economy'
 import { CAPABILITY_LABEL } from '@/lib/satelliteMeta'
@@ -12,6 +13,7 @@ import { audio } from '@/audio/AudioEngine'
 import type { Archetype } from '@/lib/archetype'
 import { ARCHETYPE_COLOR } from '@/lib/archetype'
 import { Chip } from '@/components/ui/Chip'
+import type { Objective, ObjectiveProgress } from '@/lib/contractObjective'
 
 const ARCHETYPE_LABEL: Record<Archetype, string> = {
   relief:   'RELIEF',
@@ -25,6 +27,30 @@ function countdown(deadline: number, now: number): string {
   return m > 0 ? `${m}m ${s % 60}s` : `${s}s`
 }
 
+function progressLabel(o: Objective, p: ObjectiveProgress): string {
+  switch (o.type) {
+    case 'single-pass':
+      return p.done ? 'PASS ✓' : 'AWAITING PASS'
+    case 'multi-pass':
+      return `PASS ${p.passesDone}/${o.params.passes ?? 1}`
+    case 'multi-sat':
+      return `SATS ${p.satsSeen.length}/${o.params.sats ?? 1}`
+    case 'dwell':
+      return `DWELL ${Math.round(p.dwellAccumSec)}/${o.params.dwellSec ?? 60}s`
+  }
+}
+
+// Rival accent colour (consistent with DispatchesFeed)
+const RIVAL_COLOR = '#ffa14a'
+
+function rivalCountdown(acceptedAtSec: number, rivalEtaSecValue: number, now: number): string {
+  // ETA is measured in sim-seconds from accept time; now is wall-clock sim time.
+  const rivalArrivesAt = acceptedAtSec + rivalEtaSecValue
+  const remaining = Math.max(0, Math.round((rivalArrivesAt - now) / TIME_SCALE))
+  const m = Math.floor(remaining / 60)
+  return m > 0 ? `${m}m ${remaining % 60}s` : `${remaining}s`
+}
+
 export default function ContractsPanel() {
   const founded = useAgencyStore((s) => s.founded)
   const reputation = useAgencyStore((s) => s.reputation)
@@ -36,6 +62,7 @@ export default function ContractsPanel() {
   const selectedId = useGameStore((s) => s.selectedId)
   const satellites = useGameStore((s) => s.satellites)
   const selectedCapability = satellites.find((s) => s.id === selectedId)?.capability ?? null
+  const rival = useStoryStore((s) => s.rival)
 
   const [now, setNow] = useState<number | null>(null)
   useEffect(() => {
@@ -100,13 +127,42 @@ export default function ContractsPanel() {
           <button
             key={c.id}
             onClick={() => { audio.uiTick(); setTarget(c.id); focusEvent(c.eventId) }}
-            className={`mb-1 block w-full rounded border p-2 text-left transition ${targetId === c.id ? 'border-[#ffb86b] bg-[#ffb86b]/10' : 'border-white/15 hover:border-white/30'}`}
+            className={`mb-1 block w-full rounded border p-2 text-left transition ${
+              c.contested
+                ? targetId === c.id
+                  ? 'border-[#ffa14a] bg-[#ffa14a]/10'
+                  : 'border-[#ffa14a]/40 hover:border-[#ffa14a]/60'
+                : targetId === c.id
+                  ? 'border-[#ffb86b] bg-[#ffb86b]/10'
+                  : 'border-white/15 hover:border-white/30'
+            }`}
           >
             <p className="mb-0.5 flex items-center justify-between">
-              <span className="truncate font-semibold text-[#ffb86b]">{c.title}</span>
+              <span className={`truncate font-semibold ${c.contested ? 'text-[#ffa14a]' : 'text-[#ffb86b]'}`}>{c.title}</span>
               <span className="shrink-0 tabular-nums opacity-70">{now === null ? '' : `T-${countdown(c.deadline, now)}`}</span>
             </p>
-            <p className="opacity-60">Maneuver a satellite over the target · TRACK to view</p>
+            {c.gameObjective ? (
+              <p className="mb-0.5 flex items-center gap-1.5 flex-wrap">
+                <Chip color="#a78bfa">{c.gameObjective.label}</Chip>
+                {c.progress && (
+                  <Chip className="opacity-80">{progressLabel(c.gameObjective, c.progress)}</Chip>
+                )}
+                {c.contested && now !== null && (
+                  <Chip color={RIVAL_COLOR}>
+                    ⚔ RIVAL {rivalCountdown(c.contested.acceptedAtSec, c.contested.rivalEtaSec, now)}
+                  </Chip>
+                )}
+              </p>
+            ) : (
+              <p className="opacity-60 flex items-center gap-1.5 flex-wrap">
+                <span>Maneuver a satellite over the target · TRACK to view</span>
+                {c.contested && now !== null && (
+                  <Chip color={RIVAL_COLOR}>
+                    ⚔ RIVAL {rivalCountdown(c.contested.acceptedAtSec, c.contested.rivalEtaSec, now)}
+                  </Chip>
+                )}
+              </p>
+            )}
           </button>
         ))}
 

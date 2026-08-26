@@ -1,4 +1,4 @@
-export type EventKind = 'quake' | 'wildfire' | 'storm' | 'launch'
+export type EventKind = 'quake' | 'wildfire' | 'storm' | 'launch' | 'volcano' | 'flood' | 'spaceweather'
 
 export interface WorldEvent {
   id: string
@@ -49,6 +49,8 @@ export function normalizeUsgs(json: unknown): WorldEvent[] {
 const EONET_KINDS: Record<string, { kind: EventKind; severity: number }> = {
   wildfires: { kind: 'wildfire', severity: 0.5 },
   severeStorms: { kind: 'storm', severity: 0.7 },
+  volcanoes: { kind: 'volcano', severity: 0.6 },
+  floods: { kind: 'flood', severity: 0.5 },
 }
 
 /** NASA EONET v3 open events -> WorldEvents (wildfires + severe storms only, latest geometry point). */

@@ -19,6 +19,8 @@ import PostcardButton from '@/components/PostcardButton'
 import PostcardStrip from '@/components/PostcardStrip'
 import PlaceCard from '@/components/PlaceCard'
 import CityRevealOverlay from '@/components/CityRevealOverlay'
+import DispatchesFeed from '@/components/DispatchesFeed'
+import StoryTrigger from '@/components/StoryTrigger'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -49,7 +51,14 @@ export default function Hud() {
         <FleetPanel />
         <ContractsPanel />
       </div>
-      <EventsPanel />
+      {/* Left rail: events feed + story dispatches, stacked.
+          max-h reserves ~200px at the bottom so the rail never overlaps BriefingPanel (bottom-6,
+          ~200px tall) or the right-rail postcard/guide cluster (bottom-6 right-20).
+          overflow-y: auto lets the rail scroll as a unit if both panels are tall simultaneously. */}
+      <div className="pointer-events-none fixed left-6 top-16 z-20 flex max-h-[calc(100dvh-16rem)] flex-col gap-3 overflow-y-auto">
+        <EventsPanel />
+        <DispatchesFeed />
+      </div>
       <BurnOverlay />
       <BurnGradeReadout />
       <BriefingPanel />
@@ -65,6 +74,7 @@ export default function Hud() {
       <LossBeat />
       <PlaceCard />
       <CityRevealOverlay />
+      <StoryTrigger />
       {/* Postcard controls — bottom-right, shifted left of the round GUIDE (?) button so they never overlap */}
       <div className="pointer-events-none fixed bottom-6 right-20 z-20 flex flex-col items-end gap-2">
         <PostcardStrip />

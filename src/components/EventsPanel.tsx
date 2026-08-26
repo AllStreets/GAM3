@@ -10,6 +10,9 @@ const GLYPH: Record<EventKind, { char: string; cls: string }> = {
   wildfire: { char: '▲', cls: 'text-[#ffa14a]' },
   storm: { char: '◎', cls: 'text-[#9a7bff]' },
   launch: { char: '▶', cls: 'text-[#45d8ff]' },
+  volcano: { char: '⬡', cls: 'text-[#ff8c42]' },
+  flood: { char: '〜', cls: 'text-[#4ab8ff]' },
+  spaceweather: { char: '✦', cls: 'text-[#ffe566]' },
 }
 
 function timeAgo(iso: string, now: number): string {
@@ -42,7 +45,7 @@ export default function EventsPanel() {
   }, [])
 
   return (
-    <aside className="pointer-events-auto fixed left-6 top-16 z-20 w-80 font-mono text-xs text-[var(--text)]">
+    <aside className="pointer-events-auto w-80 font-mono text-xs text-[var(--text)]">
       <section className="rounded border border-white/10 bg-black/55 p-3 backdrop-blur">
         <h2 className="mb-2 flex items-center justify-between text-[10px] tracking-[0.35em] text-[var(--accent)]">
           <span>EVENTS</span>
@@ -55,7 +58,7 @@ export default function EventsPanel() {
           <p className="py-4 text-center opacity-50">listening to the world…</p>
         ) : (
           <>
-            <ul className="max-h-[38vh] space-y-1 overflow-y-auto pr-1">
+            <ul className="max-h-[28vh] space-y-1 overflow-y-auto pr-1">
               {(expanded ? events : events.slice(0, 8)).map((ev) => {
               const g = GLYPH[ev.kind]
               const focused = ev.id === focusedId

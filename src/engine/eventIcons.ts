@@ -54,6 +54,57 @@ function draw(kind: EventKind, ctx: CanvasRenderingContext2D) {
       )
       ctx.stroke()
     }
+  } else if (kind === 'volcano') {
+    // Mountain silhouette with eruption plume
+    // Mountain body
+    ctx.beginPath()
+    ctx.moveTo(10, 110)
+    ctx.lineTo(64, 20)
+    ctx.lineTo(118, 110)
+    ctx.closePath()
+    ctx.fill()
+    // Crater cutout at peak
+    ctx.globalCompositeOperation = 'destination-out'
+    ctx.beginPath()
+    ctx.moveTo(52, 36)
+    ctx.lineTo(64, 18)
+    ctx.lineTo(76, 36)
+    ctx.closePath()
+    ctx.fill()
+    ctx.globalCompositeOperation = 'source-over'
+    // Eruption plume: three rising blobs
+    for (const [cx, cy, r] of [[64, 8, 10], [54, 2, 7], [74, 4, 7]] as const) {
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill()
+    }
+  } else if (kind === 'flood') {
+    // Three stacked waves
+    for (let row = 0; row < 3; row++) {
+      const y = 36 + row * 28
+      ctx.beginPath()
+      ctx.moveTo(10, y)
+      ctx.bezierCurveTo(30, y - 16, 50, y - 16, 64, y)
+      ctx.bezierCurveTo(78, y + 16, 98, y + 16, 118, y)
+      ctx.stroke()
+    }
+  } else if (kind === 'spaceweather') {
+    // Solar/aurora: central disc + radiating arcs
+    ctx.beginPath(); ctx.arc(c, c, 14, 0, Math.PI * 2); ctx.fill()
+    // Four diagonal rays
+    for (let k = 0; k < 4; k++) {
+      const a = (k * Math.PI) / 2 + Math.PI / 4
+      const x1 = c + Math.cos(a) * 22
+      const y1 = c + Math.sin(a) * 22
+      const x2 = c + Math.cos(a) * 50
+      const y2 = c + Math.sin(a) * 50
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+    }
+    // Aurora arcs (two sweeping curves)
+    ctx.lineWidth = 5
+    for (const sign of [1, -1] as const) {
+      ctx.beginPath()
+      ctx.arc(c, c + sign * 8, 42, Math.PI * 1.1, Math.PI * 1.9)
+      ctx.stroke()
+    }
   } else {
     // Rocket: nose + body + fins + exhaust notch
     ctx.beginPath()
