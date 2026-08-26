@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth, useUser, SignInButton, SignOutButton } from '@clerk/nextjs'
 import { audio } from '@/audio/AudioEngine'
+import { usePersistStatus } from '@/lib/persistStatus'
 
 /**
  * Settings overlay: audio mute + a bulletproof RESET.
@@ -19,6 +20,9 @@ export default function SettingsPanel() {
   // Clerk auth state — degrades gracefully if Clerk is unavailable (isLoaded stays false).
   const { isLoaded: clerkLoaded, isSignedIn } = useAuth()
   const { user } = useUser()
+
+  // Persist status from the bridge (updates reactively; starts 'local' before first server call).
+  const persistStatus = usePersistStatus((s) => s.status)
 
   // Reflect the persisted mute state once mounted (audio is client-only).
   useEffect(() => {
@@ -67,7 +71,7 @@ export default function SettingsPanel() {
 
       {open && (
         <div
-          className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm font-mono"
+          className="pointer-events-auto fixed inset-0 z-[55] flex items-center justify-center bg-black/70 backdrop-blur-sm font-mono"
           onClick={() => { setOpen(false); setConfirmReset(false) }}
         >
           <div
@@ -101,24 +105,38 @@ export default function SettingsPanel() {
               <div className="mb-4">
                 <p className="mb-1.5 text-[9px] tracking-[0.3em] text-white/40">ACCOUNT</p>
                 {isSignedIn ? (
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-[10px] text-white/60">
-                      {user?.primaryEmailAddress?.emailAddress ?? user?.firstName ?? 'Signed in'}
-                      <span className="ml-1.5 text-[9px] text-[var(--accent)]/70">· cloud save</span>
-                    </span>
-                    <SignOutButton>
-                      <button
-                        onClick={() => audio.uiTick()}
-                        className="shrink-0 rounded border border-white/15 px-2 py-1 text-[9px] text-white/50 transition hover:border-white/40 hover:text-white/90"
-                      >
-                        SIGN OUT
-                      </button>
-                    </SignOutButton>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[10px] text-white/60">
+                        {user?.primaryEmailAddress?.emailAddress ?? user?.firstName ?? 'Signed in'}
+                      </span>
+                      <SignOutButton>
+                        <button
+                          onClick={() => audio.uiTick()}
+                          className="shrink-0 rounded border border-white/15 px-2 py-1 text-[9px] text-white/50 transition hover:border-white/40 hover:text-white/90"
+                        >
+                          SIGN OUT
+                        </button>
+                      </SignOutButton>
+                    </div>
+                    {/* Save status line */}
+                    {persistStatus === 'offline' ? (
+                      <p className="text-[9px] text-amber-400/70">
+                        ⚠ Offline — saving locally
+                      </p>
+                    ) : (
+                      <p className="text-[9px] text-[var(--accent)]/60">
+                        ✓ Saved to your account
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div>
+                    {/* Save status line */}
                     <p className="mb-2 text-[10px] leading-relaxed text-white/50">
-                      Sign in to sync your save across devices. Login is optional — the game works fully without it.
+                      {persistStatus === 'offline'
+                        ? '⚠ Offline — saving locally'
+                        : 'Saved on this device · sign in to sync across devices'}
                     </p>
                     <SignInButton mode="modal">
                       <button

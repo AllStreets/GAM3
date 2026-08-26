@@ -27,6 +27,7 @@ import { useEffect, useRef } from 'react'
 import { useAuth } from '@clerk/nextjs'
 import { getAnonId } from '@/lib/anonId'
 import { saveJSON } from '@/lib/persist'
+import { markSynced, markOffline } from '@/lib/persistStatus'
 import { useGameStore } from '@/state/gameStore'
 import { useAgencyStore } from '@/state/agencyStore'
 import { useContractStore } from '@/state/contractStore'
@@ -65,8 +66,12 @@ function serverSave(key: string, data: unknown, anonId: string): void {
       'x-anon-id': anonId,
     },
     body: JSON.stringify({ key, data }),
+  }).then((res) => {
+    if (res.ok) markSynced()
+    else markOffline()
   }).catch(() => {
     // Network / DB failure: localStorage is already the local mirror. No-op.
+    markOffline()
   })
 }
 
@@ -139,14 +144,18 @@ async function hydrateFromServer(anonId: string): Promise<void> {
     const res = await fetch('/api/load', {
       headers: { 'x-anon-id': anonId },
     })
-    if (!res.ok) return
+    if (!res.ok) { markOffline(); return }
 
     const json = (await res.json()) as { ok: boolean; saves?: { key: string; data: unknown }[] }
-    if (!json.ok || !Array.isArray(json.saves) || json.saves.length === 0) return
+    if (!json.ok) { markOffline(); return }
+
+    markSynced()
+    if (!Array.isArray(json.saves) || json.saves.length === 0) return
 
     applyServerSaves(json.saves)
   } catch {
     // Network failure — keep running from localStorage.
+    markOffline()
     console.debug('[PersistBridge] /api/load failed; using local saves')
   }
 }
@@ -237,6 +246,7 @@ export function PersistBridge() {
         await hydrateFromServer(anonId)
       } catch {
         // Network / DB failure — session continues from localStorage.
+        markOffline()
         console.debug('[PersistBridge] migration failed; using local saves')
       }
     }

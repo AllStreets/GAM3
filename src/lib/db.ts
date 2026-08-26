@@ -68,11 +68,19 @@ function getSql(): NeonQueryFunction<false, false> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Module-level flag: once the CREATE TABLE IF NOT EXISTS succeeds once in
+ * this server process, we skip the DDL on every subsequent request.
+ * Reset-safe: if the server restarts the flag resets to false naturally.
+ */
+let schemaReady = false
+
+/**
  * Creates the `saves` table if it does not already exist.
- * Idempotent — safe to call on every request.
+ * Runs the DDL statement at most ONCE per server process (schemaReady guards).
  * Throws DbUnavailableError when the database is not configured.
  */
 export async function ensureSchema(): Promise<void> {
+  if (schemaReady) return
   const sql = getSql()
   await sql`
     CREATE TABLE IF NOT EXISTS saves (
@@ -83,6 +91,15 @@ export async function ensureSchema(): Promise<void> {
       PRIMARY KEY (owner_id, store_key)
     )
   `
+  schemaReady = true
+}
+
+/**
+ * Reset the schema-ready flag (test helper — allows tests to force re-creation).
+ * Never call in production code.
+ */
+export function _resetSchemaReadyForTest(): void {
+  schemaReady = false
 }
 
 // ---------------------------------------------------------------------------
