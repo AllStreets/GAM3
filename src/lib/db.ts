@@ -68,11 +68,19 @@ function getSql(): NeonQueryFunction<false, false> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Module-level flag: once the CREATE TABLE IF NOT EXISTS succeeds once in
+ * this server process, we skip the DDL on every subsequent request.
+ * Reset-safe: if the server restarts the flag resets to false naturally.
+ */
+let schemaReady = false
+
+/**
  * Creates the `saves` table if it does not already exist.
- * Idempotent — safe to call on every request.
+ * Runs the DDL statement at most ONCE per server process (schemaReady guards).
  * Throws DbUnavailableError when the database is not configured.
  */
 export async function ensureSchema(): Promise<void> {
+  if (schemaReady) return
   const sql = getSql()
   await sql`
     CREATE TABLE IF NOT EXISTS saves (
@@ -83,6 +91,15 @@ export async function ensureSchema(): Promise<void> {
       PRIMARY KEY (owner_id, store_key)
     )
   `
+  schemaReady = true
+}
+
+/**
+ * Reset the schema-ready flag (test helper — allows tests to force re-creation).
+ * Never call in production code.
+ */
+export function _resetSchemaReadyForTest(): void {
+  schemaReady = false
 }
 
 // ---------------------------------------------------------------------------
@@ -129,4 +146,40 @@ export async function deleteSaves(ownerId: string): Promise<void> {
     DELETE FROM saves
     WHERE owner_id = ${ownerId}
   `
+}
+
+/**
+ * Migrate saves from an anonymous owner to a signed-in user.
+ *
+ * Strategy (no-clobber):
+ *   - If the user already has ANY saves → do nothing (prefer account data).
+ *   - If the user has NO saves → copy all anon rows to the user (upsert).
+ *
+ * This means a logged-out session's progress is adopted into the account on
+ * first sign-in, but an existing account is never overwritten.
+ */
+export async function migrateSaves(
+  anonId: string,
+  userId: string,
+): Promise<{ migrated: boolean }> {
+  const sql = getSql()
+
+  // Check if the user already has any saves.
+  const existingRows = await sql`
+    SELECT 1 FROM saves WHERE owner_id = ${userId} LIMIT 1
+  `
+  if (existingRows.length > 0) {
+    // Account already has saves — leave them intact.
+    return { migrated: false }
+  }
+
+  // Copy anon rows to userId (INSERT … ON CONFLICT DO NOTHING for safety).
+  await sql`
+    INSERT INTO saves (owner_id, store_key, data, updated_at)
+    SELECT ${userId}, store_key, data, updated_at
+    FROM   saves
+    WHERE  owner_id = ${anonId}
+    ON CONFLICT (owner_id, store_key) DO NOTHING
+  `
+  return { migrated: true }
 }

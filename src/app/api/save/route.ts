@@ -12,6 +12,7 @@
  */
 
 import { NextRequest } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
 import {
   ensureSchema,
   upsertSave,
@@ -38,13 +39,17 @@ function err(reason: string): Response {
 
 export async function POST(request: NextRequest): Promise<Response> {
   try {
-    // --- owner id from header ---
-    const anonId = request.headers.get('x-anon-id')
-    if (!anonId || anonId.trim().length === 0) {
-      return err('missing x-anon-id header')
+    // --- owner id: Clerk userId if signed in, else x-anon-id header ---
+    const { userId: clerkUserId } = await auth()
+    const anonHeader = request.headers.get('x-anon-id')
+
+    const ownerId = clerkUserId ?? (anonHeader?.trim() ?? '')
+
+    if (!ownerId) {
+      return err('missing owner id (sign in or provide x-anon-id header)')
     }
-    if (anonId.length > MAX_ANON_ID_LEN) {
-      return err('x-anon-id too long')
+    if (ownerId.length > MAX_ANON_ID_LEN) {
+      return err('owner id too long')
     }
 
     // --- body size guard ---
@@ -80,7 +85,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     // --- persist ---
     await ensureSchema()
-    await upsertSave(anonId.trim(), key, data)
+    await upsertSave(ownerId, key, data)
 
     return ok()
   } catch (e) {
