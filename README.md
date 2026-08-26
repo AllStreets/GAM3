@@ -6,7 +6,7 @@ A browser game about running a private orbital agency over a living Earth —
 real orbital mechanics, real live world events, and an AI-woven world that
 grows differently for every player.
 
-**Status:** Plan 9 (Story Engine) shipped — the world has memory and drama: completing a contract over a place blooms its real city photo into the cinematic; more real feeds (GDACS disasters, NOAA space-weather, more EONET categories); contracts vary in *how* you play them (multi-pass / multi-satellite / dwell); an AI story engine grows dispatches and arcs from your record; and a rival agency with memory races you for contracts. (Builds on Plan 8 living places, Plan 7B soul & spectacle.)
+**Status:** Plan 10 (Resilience & Progression) shipped — no more soft-locks: auto-contracts are filtered to reachable targets, you can STAND DOWN to free a stuck satellite, refuel is partial (buy what you can afford), and an earned safety net (relief grants + emergency-refit tokens) guarantees you can always continue. Plus four upgrades: bigger tanks, refuel efficiency, capability retrofit, and buying a satellite aimed at a chosen plane. (Builds on Plan 9 story engine, Plan 8 living places, Plan 7B soul & spectacle.)
 
 ## Stack
 
