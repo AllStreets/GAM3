@@ -22,6 +22,7 @@ import PlaceCard from '@/components/PlaceCard'
 import CityRevealOverlay from '@/components/CityRevealOverlay'
 import DispatchesFeed from '@/components/DispatchesFeed'
 import StoryTrigger from '@/components/StoryTrigger'
+import { PersistBridge } from '@/components/PersistBridge'
 
 function utcNow(): string {
   return new Date().toISOString().slice(11, 19) + ' UTC'
@@ -82,6 +83,8 @@ export default function Hud() {
       <PlaceCard />
       <CityRevealOverlay />
       <StoryTrigger />
+      {/* Server persistence bridge — no-op if DB/network unavailable */}
+      <PersistBridge />
       {/* Postcard controls — bottom-right, shifted left of the round GUIDE (?) button so they never overlap */}
       <div className="pointer-events-none fixed bottom-6 right-20 z-20 flex flex-col items-end gap-2">
         <PostcardStrip />
