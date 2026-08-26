@@ -47,7 +47,12 @@ export default function Hud() {
           {clock ?? '--:--:-- UTC'}
         </p>
       </header>
-      <div className="pointer-events-none fixed right-6 top-16 z-20 flex max-h-[calc(100dvh-6rem)] w-80 flex-col gap-3 overflow-y-auto">
+      {/* Right rail: fleet + contracts. max-h reserves bottom-6 padding + ~80px for
+          the bottom-center InterceptReadout/GuidanceHint so the rail never overlaps
+          those elements or the bottom-right postcard/guide cluster (bottom-6 right-20).
+          overflow-y: auto lets the rail scroll as a unit when upgrades/record/refit
+          panels are expanded on shorter screens. */}
+      <div className="pointer-events-none fixed right-6 top-16 z-20 flex max-h-[calc(100dvh-9rem)] w-80 flex-col gap-3 overflow-y-auto">
         <FleetPanel />
         <ContractsPanel />
       </div>

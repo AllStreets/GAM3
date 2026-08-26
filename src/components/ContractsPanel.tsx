@@ -15,6 +15,7 @@ import { ARCHETYPE_COLOR } from '@/lib/archetype'
 import { Chip } from '@/components/ui/Chip'
 import type { Objective, ObjectiveProgress } from '@/lib/contractObjective'
 import { fleetReachability } from '@/lib/reachability'
+import { refuelPricePerDv, affordableRefuelDv } from '@/lib/economy'
 import type { Contract } from '@/state/contractStore'
 import type { Satellite } from '@/state/gameStore'
 
@@ -51,21 +52,60 @@ function satLabel(sats: { id: string; name: string }[], satId: string): string {
   return sats.find((s) => s.id === satId)?.name ?? satId.toUpperCase()
 }
 
-/** Reach chip shown on each available/player-created contract. */
-function ReachChip({ contract, sats }: { contract: Contract; sats: Satellite[] }) {
+/**
+ * Reach chip shown on each available/player-created contract.
+ *
+ * GREEN  — reachable and the best sat has enough fuel (or can afford enough
+ *          refuel) to cover the remaining Δv gap right now.
+ * AMBER  — reachable by at least one sat's orbital plane, but the best sat
+ *          doesn't have enough fuel AND the player can't afford enough refuel
+ *          to close the gap — needs refuel or upgrade before flying.
+ * RED    — no satellite's plane can reach this latitude at all.
+ */
+function ReachChip({
+  contract, sats, funding, refuelEfficiencyLevel,
+}: {
+  contract: Contract
+  sats: Satellite[]
+  funding: number
+  refuelEfficiencyLevel: number
+}) {
   // Prefer the pre-computed annotation; fall back to computing in-panel.
   const reach = contract.reach ?? fleetReachability(sats, { lat: contract.lat, lon: contract.lon })
-  if (reach.reachable && reach.bestSatId !== null) {
-    const label = satLabel(sats, reach.bestSatId)
-    const dv = reach.bestApproxDvMs ?? 0
+
+  if (!reach.reachable || reach.bestSatId === null) {
+    return <Chip color="#f87171">beyond coverage</Chip>
+  }
+
+  const label = satLabel(sats, reach.bestSatId)
+  const dvNeeded = reach.bestApproxDvMs ?? 0
+  const bestSat = sats.find((s) => s.id === reach.bestSatId)
+
+  // "Can the best sat fly this NOW?" — it has enough fuel for the needed Δv.
+  const satHasFuel = bestSat ? bestSat.fuel >= dvNeeded : false
+
+  // "Can the player afford to refuel enough to cover the gap?" — even partial
+  // refuel counts if it would bring the sat's fuel ≥ dvNeeded.
+  const pricePerDv = refuelPricePerDv(refuelEfficiencyLevel)
+  const missingFuel = bestSat ? Math.max(0, dvNeeded - bestSat.fuel) : dvNeeded
+  const affordDv = affordableRefuelDv(missingFuel, funding, pricePerDv)
+  const canAffordGap = bestSat
+    ? bestSat.fuel + affordDv >= dvNeeded
+    : false
+
+  if (satHasFuel || canAffordGap || dvNeeded === 0) {
     return (
       <Chip color="#4ade80">
-        {'◀ '}{label}{' · ~'}{dv}{' m/s'}
+        {'◀ '}{label}{' · ~'}{dvNeeded}{' m/s'}
       </Chip>
     )
   }
+
+  // Amber: reachable by plane, but can't afford enough refuel right now.
   return (
-    <Chip color="#f87171">beyond coverage</Chip>
+    <Chip color="#fbbf24">
+      {'◀ '}{label}{' · needs refuel/upgrade'}
+    </Chip>
   )
 }
 
@@ -80,6 +120,8 @@ function rivalCountdown(acceptedAtSec: number, rivalEtaSecValue: number, now: nu
 export default function ContractsPanel() {
   const founded = useAgencyStore((s) => s.founded)
   const reputation = useAgencyStore((s) => s.reputation)
+  const funding = useAgencyStore((s) => s.funding)
+  const refuelEfficiencyLevel = useAgencyStore((s) => s.refuelEfficiencyLevel)
   const contracts = useContractStore((s) => s.contracts)
   const targetId = useContractStore((s) => s.targetId)
   const accept = useContractStore((s) => s.accept)
@@ -135,7 +177,7 @@ export default function ContractsPanel() {
                     {isMatch && (
                       <span className="text-[9px] text-yellow-400 opacity-80">★ match</span>
                     )}
-                    <ReachChip contract={c} sats={satellites} />
+                    <ReachChip contract={c} sats={satellites} funding={funding} refuelEfficiencyLevel={refuelEfficiencyLevel} />
                   </p>
                   <p className="flex items-center justify-between">
                     <span className="tabular-nums opacity-70" style={{ color: 'var(--accent)' }}>§{c.reward.funding} · REP {c.reward.reputation}</span>

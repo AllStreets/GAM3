@@ -564,3 +564,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     })
   },
 }))
+
+// Expose the store on window in non-production so Playwright e2e tests can
+// seed fleet state and inspect satellites without relying on the game engine.
+if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+  ;(window as unknown as Record<string, unknown>).__gameStore = useGameStore
+}

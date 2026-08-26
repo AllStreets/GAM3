@@ -174,6 +174,12 @@ export const useAgencyStore = create<AgencyState>((set, get) => ({
   },
 }))
 
+// Expose the store on window in non-production so Playwright e2e tests can
+// seed funding/milestones and inspect agency state.
+if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+  ;(window as unknown as Record<string, unknown>).__agencyStore = useAgencyStore
+}
+
 export function agencyTitle(): string {
   const s = useAgencyStore.getState()
   return archetypeTitle(dominantArchetype(s.leaning), s.reputation)
