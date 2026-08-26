@@ -9,6 +9,8 @@ class AudioEngine {
   private rumbleGain: GainNode | null = null
   private rumbleSrc: AudioBufferSourceNode | null = null
   private armed = false
+  private muted = typeof window !== 'undefined' && window.localStorage?.getItem('hyperion-muted') === '1'
+  private static BASE_VOLUME = 0.18
 
   /** Install one-time gesture listeners that boot the context + ambient bed. */
   armGesture() {
@@ -29,9 +31,25 @@ class AudioEngine {
     if (!Ctx) return
     this.ctx = new Ctx()
     this.master = this.ctx.createGain()
-    this.master.gain.value = 0.18
+    this.master.gain.value = this.muted ? 0 : AudioEngine.BASE_VOLUME
     this.master.connect(this.ctx.destination)
     this.startAmbient()
+  }
+
+  /** Whether audio is currently muted (persisted across sessions). */
+  isMuted(): boolean {
+    return this.muted
+  }
+
+  /** Mute/unmute all audio; persisted to localStorage. */
+  setMuted(m: boolean) {
+    this.muted = m
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.setItem('hyperion-muted', m ? '1' : '0') } catch { /* ignore */ }
+    }
+    if (this.master && this.ctx) {
+      this.master.gain.setTargetAtTime(m ? 0 : AudioEngine.BASE_VOLUME, this.ctx.currentTime, 0.02)
+    }
   }
 
   /** Very quiet filtered-noise drone with a slow LFO swell. */
