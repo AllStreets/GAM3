@@ -1,6 +1,18 @@
+<div align="center">
+
 # HYPERION
 
 *The watch from above.*
+
+<img alt="tests" src="https://img.shields.io/badge/tests-511_passing-4ADE80?style=for-the-badge&labelColor=07090c"/>
+<img alt="orbits" src="https://img.shields.io/badge/orbital_mechanics-real-38BDF8?style=for-the-badge&labelColor=07090c"/>
+<img alt="world" src="https://img.shields.io/badge/world-evolves_offline-38BDF8?style=for-the-badge&labelColor=07090c"/>
+<br/>
+<img alt="stack" src="https://img.shields.io/badge/Next.js_%C2%B7_Three.js_%C2%B7_Neon-6b7382?style=flat-square&labelColor=07090c"/>
+
+</div>
+
+---
 
 A browser game about running a private orbital agency over a living Earth —
 real orbital mechanics, real live world events, and an AI-woven world that
